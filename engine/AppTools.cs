@@ -839,7 +839,12 @@ namespace PixTune
             Register(new ToolDef
             {
                 Id = "portrait", Name = "Portrait", Glyph = G(0xE77B), Canvas = "Adjust",
-                Params = new List<Prm> { P("spotlight", "Face spotlight", 0, 100, 25), P("smoothing", "Skin smoothing", 0, 100, 25), P("eyes", "Eye clarity", 0, 100, 25) },
+                // Skin smoothing is the old single slider, which blurs every bit of skin alike. The six below
+                // each work through their own map of one kind of fault, so taking a blemish out does not cost
+                // the pores, and Keep texture puts the grain back over whatever the others did.
+                Params = new List<Prm> { P("spotlight", "Face spotlight", 0, 100, 25), P("smoothing", "Skin smoothing", 0, 100, 25), P("eyes", "Eye clarity", 0, 100, 25),
+                    P("spots", "Spots", 0, 100, 0), P("redness", "Redness", 0, 100, 0), P("wrinkles", "Lines", 0, 100, 0),
+                    P("shine", "Shine", 0, 100, 0), P("undereye", "Under eyes", 0, 100, 0), P("keeptexture", "Keep texture", 0, 100, 60) },
                 Setup = () =>
                 {
                     GetFacesForStep(); SyncFacesOverlay();

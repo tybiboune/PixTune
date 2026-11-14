@@ -1,0 +1,71 @@
+# Skin work by kind of fault: each slider does something, each does its own thing, and - the point of all of
+# it - taking the blemishes out does not take the pores with them, where one smoothing slider does.
+# Skipped when no face is found in the photo the suite was given.
+$script:StOut = $SelfTest
+if (-not (Test-Path $script:StOut)) { New-Item -ItemType Directory $script:StOut -Force | Out-Null }
+$script:Trace = New-Object System.Collections.Generic.List[string]
+$script:StSteps = New-Object System.Collections.Queue
+function global:Expect([bool]$ok, [string]$what) { $script:Trace.Add(("{0} {1}" -f $(if ($ok) { 'ok  ' } else { 'FAIL' }), $what)); if (-not $ok) { $script:ErrorLog.Add("expected: $what") } }
+
+function global:Run([string]$faces, [hashtable]$set) {
+    $s = New-Object PixTune.Step 'portrait'
+    $s.S['faces'] = $faces
+    $s.Set('spotlight', 0); $s.Set('smoothing', 0); $s.Set('eyes', 0)
+    $s.Set('spots', 0); $s.Set('redness', 0); $s.Set('wrinkles', 0); $s.Set('shine', 0); $s.Set('undereye', 0); $s.Set('keeptexture', 60)
+    foreach ($k in $set.Keys) { $s.Set($k, $set[$k]) }
+    [PixTune.Pipeline]::Apply($App.Doc.Preview, $s)
+}
+# how much fine detail is left where the skin is: the pores, the grain, the stubble
+function global:Grain($im, $skin) {
+    $w = $im.W; $sum = 0.0; $n = 0
+    for ($y = 1; $y -lt $im.H - 1; $y += 2) {
+        for ($x = 1; $x -lt $w - 1; $x += 2) {
+            $i = $y * $w + $x
+            if ($skin[$i] -lt 0.5) { continue }
+            $c = $im.D[$i * 3]
+            $d = [Math]::Abs($c - $im.D[($i + 1) * 3]) + [Math]::Abs($c - $im.D[($i + $w) * 3])
+            $sum += $d; $n++
+        }
+    }
+    if ($n -eq 0) { return -1 } else { return $sum / $n }
+}
+
+St 'skin by kind of fault' {
+    $p = $App.Doc.Preview
+    $faces = $App.FindFaces($p)
+    if ([string]::IsNullOrEmpty($faces)) {
+        $script:Trace.Add("ok   no face in this photo: skipped ($($App.FaceError))")
+        return
+    }
+    $list = [PixTune.Face]::ParseFaces($faces)
+    $maps = [PixTune.SkinDefects]::Build($p, $list, $faces)
+    $skin = $maps.A.Skin
+    Expect ($maps.A.FromMesh) "the landmarks fitted the face, so the regions are real and not a box"
+    Expect ($maps.A.CrSpread -lt 12) ("the skin colour is fitted to this face, not assumed (Cr spread {0:N1})" -f $maps.A.CrSpread)
+
+    $plain = Run $faces @{}
+    $base = Grain $plain $skin
+    Expect ($base -gt 0) ("the untouched photo has grain in the skin to lose ({0:N5})" -f $base)
+
+    # each slider has to do something, and on its own
+    foreach ($one in @(@('spots', 'Spots'), @('redness', 'Redness'), @('wrinkles', 'Lines'), @('undereye', 'Under eyes'))) {
+        $o = Run $faces @{ $one[0] = 100 }
+        $moved = 0.0; $n = 0
+        for ($i = 0; $i -lt $o.N; $i++) {
+            if ($skin[$i] -lt 0.5) { continue }
+            $moved += [Math]::Abs($o.D[$i * 3] - $plain.D[$i * 3]); $n++
+        }
+        $per = if ($n -gt 0) { $moved / $n } else { 0 }
+        Expect ($per -gt 0.0005) ("{0} changes the skin on its own ({1:N5} a pixel over {2} skin pixels)" -f $one[1], $per, $n)
+    }
+
+    # the point of the whole thing: the blemishes go and the grain stays, where one smoothing slider takes both
+    $spots = Run $faces @{ spots = 100 }
+    $smooth = Run $faces @{ smoothing = 70 }
+    $gSpots = Grain $spots $skin
+    $gSmooth = Grain $smooth $skin
+    Expect ($gSpots -gt $base * 0.8) ("taking the spots out keeps the skin's grain ({0:N5} against {1:N5} untouched)" -f $gSpots, $base)
+    Expect ($gSmooth -lt $base * 0.7) ("where the old smoothing takes it away ({0:N5}, {1:P0} of what was there)" -f $gSmooth, ($gSmooth / $base))
+    Expect ($gSpots -gt $gSmooth * 1.3) "so the two are not doing the same thing"
+}
+Start-StRun -Log 'skin.log'

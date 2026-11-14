@@ -22,6 +22,12 @@ namespace PixTune
             public float[] Shine;      // bright and colourless: light bounced off the skin
             public float[] UnderEye;   // darker than the cheek below it, under the eyes
             public float[] Texture;    // the fine detail that is none of the above, and has to survive the rest
+            // What the corrections work from. These depend on the photograph and not on any setting, so they
+            // are worked out once with the maps: moving a slider is then one pass over the pixels.
+            public float[] Blob;       // the blemish-sized ups and downs of the brightness
+            public float[] Smoothed;   // brightness with the thin valleys taken out, for the lines
+            public float[] Around;     // brightness over a wide area: what shine is above and a shadow below
+            public float[] Fine;       // the finest detail, which is what gets put back at the end
             public SkinAtlas.Atlas A;
             public string Note = "";
         }
@@ -171,9 +177,92 @@ namespace PixTune
                 M.Texture[i] = sk * Ops.C01(texture[i] / (sp * 1.4f)) * (1 - claimed);
             }
 
+            M.Blob = band;            // keeps the array: it is the blemish signal itself
+            M.Smoothed = Ops.Gauss(L, w, h, Math.Max(1.2f, fs * 0.010f));
+            M.Around = cheekRef;
+            M.Fine = new float[n];
+            for (int i = 0; i < n; i++) M.Fine[i] = L[i] - lSmall[i];
             M.Note = string.Format("face {0:N0} px, skin {1:P1} of the picture", fs, Share(a.Skin) );
-            Ops.Done(L, lFine, lCoarse, band, absBand, spread, cr, crBlur, cheekRef, hiPass, lSmall, texture);
+            Ops.Done(L, lFine, lCoarse, absBand, spread, cr, crBlur, hiPass, lSmall, texture);
             return M;
+        }
+
+
+        // ---------------- putting it right ----------------
+        // Each setting works only through its own map, so turning one up cannot quietly do another's job. The
+        // corrections are all of the same kind: move this pixel part of the way towards what the skin around it
+        // is doing, by as much as its map says and no more.
+        //
+        // Colour is changed without touching brightness, and brightness without touching colour. That is what
+        // keeps a face from going grey as the redness comes out of it, or chalky as a shine is brought down.
+        public static Img Apply(Img src, Maps M, float spots, float redness, float lines, float shine, float underEye, float keepTexture)
+        {
+            if (M == null) return src.Clone();
+            int w = src.W, h = src.H;
+            Img o = src.Clone();
+            float[] D = o.D, S = src.D;
+            float[] A = M.A.Skin;
+            float cbMid = M.A.CbMid, crMid = M.A.CrMid;
+            Ops.For(0, h, y =>
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int i = y * w + x, j = i * 3;
+                    if (A[i] <= 0.01f) continue;
+                    float r = S[j], g = S[j + 1], b = S[j + 2];
+                    // brightness and colour apart, so each correction touches only what it means to
+                    float yy = 16f + 65.481f * r + 128.553f * g + 24.966f * b;
+                    float cb = 128f - 37.797f * r - 74.203f * g + 112f * b;
+                    float cr = 128f + 112f * r - 93.786f * g - 18.214f * b;
+                    float y0 = yy;
+
+                    // a blemish is a blob of brightness at its own size: take that blob away and the skin
+                    // around it closes over, while anything finer than the blob stays where it was
+                    if (spots > 0) yy -= 219f * M.Blob[i] * M.Spots[i] * spots;
+                    // a line is a thin valley: fill it part of the way back up to the skin beside it
+                    if (lines > 0)
+                    {
+                        float lNow = (y0 - 16f) / 219f;   // what it was before any of this
+                        float lFlat = M.Smoothed[i];
+                        yy += 219f * (lFlat - lNow) * M.Lines[i] * lines;
+                    }
+                    // shine is brightness above what the face is doing around it; a shadow under the eye is
+                    // brightness below it. Both are moved back towards that, never past it.
+                    if (shine > 0)
+                    {
+                        float lNow = (yy - 16f) / 219f;
+                        float over = lNow - M.Around[i];
+                        if (over > 0) yy -= 219f * over * M.Shine[i] * shine * 0.85f;
+                    }
+                    if (underEye > 0)
+                    {
+                        float lNow = (yy - 16f) / 219f;
+                        float under = M.Around[i] - lNow;
+                        if (under > 0) yy += 219f * under * M.UnderEye[i] * underEye * 0.8f;
+                    }
+                    // redness is a move along one colour axis, so it comes out along that axis alone and the
+                    // brightness above is left exactly as it is
+                    if (redness > 0)
+                    {
+                        float k = M.Redness[i] * redness;
+                        cr -= (cr - crMid) * k;
+                        cb -= (cb - cbMid) * k * 0.35f;
+                    }
+                    // and the skin's own grain goes back on top of whatever was done to it
+                    if (keepTexture > 0) yy += 219f * M.Fine[i] * M.Texture[i] * keepTexture;
+
+                    float yn = (yy - 16f) * 0.00456621f;
+                    float nr = yn + 0.00625893f * (cr - 128f);
+                    float ng = yn - 0.00153632f * (cb - 128f) - 0.00318811f * (cr - 128f);
+                    float nb = yn + 0.00791071f * (cb - 128f);
+                    // only as far as the map says, so the edge of a correction is never a visible border
+                    float m = A[i];
+                    D[j] = Ops.Lerp(r, nr, m);
+                    D[j + 1] = Ops.Lerp(g, ng, m);
+                    D[j + 2] = Ops.Lerp(b, nb, m);
+                }
+            });
+            return o;
         }
 
         static float Share(float[] m)

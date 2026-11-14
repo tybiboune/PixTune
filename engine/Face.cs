@@ -148,6 +148,16 @@ namespace PixTune
             int tone = s.I("skintone", 0);
             float fs = TypicalFace(src, faces);
             int w = src.W, h = src.H;
+            // The faults first, each through its own map, before anything that works on the skin as a whole:
+            // taking a blemish out and then smoothing is not the same as smoothing a blemish away.
+            float dSpots = s.F("spots", 0) / 100f, dRed = s.F("redness", 0) / 100f, dLines = s.F("wrinkles", 0) / 100f;
+            float dShine = s.F("shine", 0) / 100f, dUnder = s.F("undereye", 0) / 100f, dKeep = s.F("keeptexture", 60) / 100f;
+            if (faces.Count > 0 && (dSpots > 0 || dRed > 0 || dLines > 0 || dShine > 0 || dUnder > 0))
+            {
+                SkinDefects.Maps maps = SkinDefects.Build(src, faces, s.Str("faces", ""));
+                Img fixed_ = SkinDefects.Apply(src, maps, dSpots, dRed, dLines, dShine, dUnder, dKeep);
+                if (fixed_ != null) src = fixed_;
+            }
             Img o = src.Clone();
             float[] skin = SkinMask(src, faces);
             if (smooth > 0)
