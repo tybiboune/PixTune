@@ -381,34 +381,83 @@ namespace PixTune
                 Type tFace = Type.GetType("Windows.Media.FaceAnalysis.DetectedFace, Windows.Media.FaceAnalysis, ContentType=WindowsRuntime", true);
                 Assembly rt = Assembly.Load("System.Runtime.WindowsRuntime, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
                 if (asTask == null)
-                    asTask = rt.GetType("System.WindowsRuntimeSystemExtensions").GetMethods().First(m => m.Name == "AsTask" && m.GetParameters().Length == 1
-                        && m.GetParameters()[0].ParameterType.Name == "IAsyncOperation`1");
+                {
+                    Type tExt = rt.GetType("System.WindowsRuntimeSystemExtensions");
+                    if (tExt == null) throw new Exception("System.WindowsRuntimeSystemExtensions is not in " + rt.FullName);
+                    foreach (MethodInfo m in tExt.GetMethods())
+                        if (m.Name == "AsTask" && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType.Name == "IAsyncOperation`1") { asTask = m; break; }
+                    if (asTask == null) throw new Exception("no AsTask(IAsyncOperation) on System.WindowsRuntimeSystemExtensions");
+                }
                 if (!(bool)tDet.GetProperty("IsSupported").GetValue(null, null)) return "";
                 Img small = im.FitInside(1200);
                 using (MemoryStream ms = new MemoryStream())
                 {
                     using (Bitmap bmp = small.ToBitmap()) bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
                     ms.Position = 0;
-                    object ras = rt.GetType("System.IO.WindowsRuntimeStreamExtensions").GetMethod("AsRandomAccessStream").Invoke(null, new object[] { ms });
+                    // Every one of these is looked up by name at run time, so a missing one is a null that only
+                    // shows up as a null reference somewhere else entirely. Each is named as it is found.
+                    object ras = Need(rt.GetType("System.IO.WindowsRuntimeStreamExtensions"), "AsRandomAccessStream").Invoke(null, new object[] { ms });
                     Type tStream = Type.GetType("Windows.Storage.Streams.IRandomAccessStream, Windows.Storage.Streams, ContentType=WindowsRuntime", true);
-                    object dec = Await(tDec.GetMethod("CreateAsync", new[] { tStream }).Invoke(null, new[] { ras }), tDec);
-                    object sb = Await(tDec.GetMethod("GetSoftwareBitmapAsync", Type.EmptyTypes).Invoke(dec, null), tSb);
-                    object gray = tSb.GetMethod("Convert", new[] { tSb, tFmt }).Invoke(null, new[] { sb, Enum.Parse(tFmt, "Gray8") });
-                    object det = Await(tDet.GetMethod("CreateAsync").Invoke(null, null), tDet);
+                    object dec = Await(NeedWith(tDec, "CreateAsync", tStream).Invoke(null, new[] { ras }), tDec);
+                    object sb = Await(NeedWith(tDec, "GetSoftwareBitmapAsync", Type.EmptyTypes).Invoke(dec, null), tSb);
+                    object gray = NeedWith(tSb, "Convert", tSb, tFmt).Invoke(null, new[] { sb, Enum.Parse(tFmt, "Gray8") });
+                    object det = Await(Need(tDet, "CreateAsync").Invoke(null, null), tDet);
                     Type tList = typeof(IList<>).MakeGenericType(tFace);
-                    IEnumerable faces = (IEnumerable)Await(tDet.GetMethod("DetectFacesAsync", new[] { tSb }).Invoke(det, new[] { gray }), tList);
+                    IEnumerable faces = (IEnumerable)Await(NeedWith(tDet, "DetectFacesAsync", tSb).Invoke(det, new[] { gray }), tList);
                     List<string> outp = new List<string>();
                     CultureInfo inv = CultureInfo.InvariantCulture;
                     foreach (object f in faces)
                     {
-                        object b = f.GetType().GetProperty("FaceBox").GetValue(f, null);
-                        Func<string, double> v = n => Convert.ToDouble(b.GetType().GetProperty(n).GetValue(b, null));
+                        object b = Need(f.GetType(), "get_FaceBox").Invoke(f, null);
+                        // The box comes back as BitmapBounds, which Windows projects as a struct with fields,
+                        // not properties. Asking it for a property gave null and the null turned into a null
+                        // reference inside the lambda, so a face that had been found looked like no face at
+                        // all: every tool that needs one has been quietly doing nothing.
+                        Func<string, double> v = n =>
+                        {
+                            Type tb = b.GetType();
+                            PropertyInfo p = tb.GetProperty(n);
+                            if (p != null) return Convert.ToDouble(p.GetValue(b, null));
+                            FieldInfo fi = tb.GetField(n);
+                            if (fi == null) throw new Exception("a face box with no " + n + " (" + tb.FullName + ")");
+                            return Convert.ToDouble(fi.GetValue(b));
+                        };
                         outp.Add(string.Format(inv, "{0},{1},{2},{3}", v("X") / small.W, v("Y") / small.H, v("Width") / small.W, v("Height") / small.H));
                     }
                     return string.Join(";", outp.ToArray());
                 }
             }
-            catch (Exception) { return ""; }
+            catch (Exception ex)
+            {
+                Exception e = ex is TargetInvocationException && ex.InnerException != null ? ex.InnerException : ex;
+                FaceError = e.GetType().Name + ": " + e.Message + " | " + (e.StackTrace ?? "").Replace("\r\n", " <- ");
+                return "";
+            }
+        }
+        // why the face detector found nothing, when it was not simply that there is no face: without this, a
+        // detector that cannot run at all and a photo with nobody in it look exactly alike, and every tool that
+        // needs a face quietly does nothing
+        public string FaceError = "";
+
+        // the only method of that name, or a complaint that names it
+        static MethodInfo Need(Type t, string name) { return Found(t, name, t == null ? null : t.GetMethod(name)); }
+        // the one taking exactly these arguments (Type.EmptyTypes for the one taking none)
+        static MethodInfo NeedWith(Type t, string name, params Type[] args)
+        {
+            return Found(t, name, t == null ? null : t.GetMethod(name, args));
+        }
+        static MethodInfo Found(Type t, string name, MethodInfo m)
+        {
+            if (t == null) throw new Exception("the Windows type for " + name + " is not available");
+            if (m == null)
+            {
+                // the overload asked for is not there: say which ones are, so it can be put right
+                List<string> had = new List<string>();
+                foreach (MethodInfo c in t.GetMethods()) if (c.Name == name) had.Add(c.ToString());
+                throw new Exception(t.Name + "." + name + " with those arguments is not there; it has: "
+                    + (had.Count > 0 ? string.Join(" | ", had.ToArray()) : "no method of that name"));
+            }
+            return m;
         }
     }
 }
