@@ -106,7 +106,7 @@ uint B8(float v) { int q = (int)(v * 255.0 + 0.5); return (uint)(q < 0 ? 0 : (q 
 // ---------- Adjust.ToneCore (Tune, Raw Develop). In3: blurred luma Lb when PI(0) = 1 ----------
 [numthreads(16,16,1)] void ToneCore(uint3 id : SV_DispatchThreadID) {
     GUARD
-    float br = PF(0), am = PF(1), co = PF(2), sa = PF(3), sh = PF(4), hi = PF(5), wa = PF(6), expo = PF(7), gamma = PF(8), ek = PF(9);
+    float br = PF(0), am = PF(1), co = PF(2), sa = PF(3), sh = PF(4), hi = PF(5), wa = PF(6), expo = PF(7), gamma = PF(8), ek = PF(9), vi = PF(10);
     float3 c = float3(In0[i], In1[i], In2[i]) * ek;
     float l = Lum(c);
     float t = l;
@@ -127,6 +127,16 @@ uint B8(float v) { int q = (int)(v * 255.0 + 0.5); return (uint)(q < 0 ? 0 : (q 
         float cs = mx > 1e-4 ? (mx - mn) / mx : 0;
         float ff = f > 1 ? 1 + (f - 1) * (1 - 0.55 * cs) : f;
         c = Sat3(c, ff);
+    }
+    if (vi != 0) {
+        float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+        float cs = mx > 1e-4 ? (mx - mn) / mx : 0;
+        float wgt = (1 - cs) * (1 - cs);
+        if (c.r > c.g && c.g > c.b && mx > 0.15) {
+            float t2 = c.r - c.b > 1e-4 ? (c.g - c.b) / (c.r - c.b) : 0;
+            wgt *= 1 - 0.7 * (1 - min(1.0, abs(t2 - 0.5) / 0.3));
+        }
+        c = Sat3(c, 1 + vi * wgt);
     }
     if (wa != 0) {
         float l0 = Lum(c);

@@ -431,7 +431,7 @@ namespace PixTune
             {
                 Id = "tune", Name = "Tune Image", Glyph = G(0xE9E9), Canvas = "Adjust",
                 Params = new List<Prm> { P("brightness", "Brightness"), P("ambiance", "Ambiance"), P("contrast", "Contrast"), P("saturation", "Saturation"),
-                    P("shadows", "Shadows"), P("highlights", "Highlights"), P("warmth", "Warmth") },
+                    P("vibrance", "Vibrance"), P("shadows", "Shadows"), P("highlights", "Highlights"), P("warmth", "Warmth") },
                 Setup = () =>
                 {
                     // Auto adapts to the photo below it; the sliders then fine-tune on top of the automatic correction.

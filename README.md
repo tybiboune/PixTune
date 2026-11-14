@@ -53,7 +53,7 @@ Tested on Sony A1 II, A6400, A7 V and Nikon D5300, Z50 II, Z6III (lossless, HE, 
 
 | Tools | Filters |
 |---|---|
-| Tune Image (brightness, ambiance, contrast, saturation, shadows, highlights, warmth, Auto) | HDR Scape (Nature, People, Fine, Strong) |
+| Tune Image (brightness, ambiance, contrast, saturation, vibrance, shadows, highlights, warmth, Auto) | HDR Scape (Nature, People, Fine, Strong) |
 | Details (structure, sharpening) | Glamour Glow (6 styles) |
 | Curves (RGB, R, G, B, luminance, presets, histogram) | Tonal Contrast (high/mid/low tones, protect shadows/highlights) |
 | White Balance (temperature, tint, Auto, grey picker) | Drama (Bright 1-3, Dark 1-3) |
@@ -229,6 +229,16 @@ by copying that back. Only `engine`, `lib`, `tests`, the scripts and the README 
 the folder is left alone. It will only fetch from `github.com` and its own content hosts, over https, and
 nothing is put in place until the download has been unpacked and found to be a PixTune folder. Turn the daily
 look off with the tick box beside the button.
+
+## Saturation and vibrance
+
+Tune Image has both, vibrance under saturation. Saturation moves every colour by as much, so the colours that
+already had plenty are the first to go to poster paint, and a face turns orange long before a flat sky comes to
+life. Vibrance weighs each pixel by how little colour it has to begin with, so what is dull moves and what is
+already strong hardly does, and it holds back by up to seven tenths on skin: orange hues, where green sits about
+half way between blue and red, and only where there is light enough to see the colour. On the photo both are
+measured on, at the same setting of 60, saturation took the average colour from 0.42 to 0.57 and moved the skin
+7.8 levels; vibrance took it to 0.47 and moved the skin 1.7.
 
 ## Working like the mobile app
 

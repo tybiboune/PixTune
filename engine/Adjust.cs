@@ -15,10 +15,19 @@ namespace PixTune
         {
             double[] a = s.I("auto", 0) == 1 ? AutoTune(src) : new double[5];
             return ToneCore(src, (float)(s.F("brightness") + a[0]) / 100f, s.F("ambiance") / 100f, (float)(s.F("contrast") + a[1]) / 100f,
-                (float)(s.F("saturation") + a[2]) / 100f, (float)(s.F("shadows") + a[3]) / 100f, (float)(s.F("highlights") + a[4]) / 100f, s.F("warmth") / 100f, 0f);
+                (float)(s.F("saturation") + a[2]) / 100f, (float)(s.F("shadows") + a[3]) / 100f, (float)(s.F("highlights") + a[4]) / 100f,
+                s.F("warmth") / 100f, 0f, s.F("vibrance") / 100f);
         }
 
         public static Img ToneCore(Img src, float br, float am, float co, float sa, float sh, float hi, float wa, float expo)
+        {
+            return ToneCore(src, br, am, co, sa, sh, hi, wa, expo, 0f);
+        }
+
+        // vi: vibrance. Saturation moves every colour by as much, so the colours that already had plenty are the
+        // first to go to poster paint, and a face turns orange long before a flat sky comes to life. Vibrance
+        // weighs each pixel by how little colour it has to begin with, and holds back on skin.
+        public static Img ToneCore(Img src, float br, float am, float co, float sa, float sh, float hi, float wa, float expo, float vi)
         {
             Img gpu = Gpu.RunJob(src, j =>
             {
@@ -30,7 +39,7 @@ namespace PixTune
                     lb = j.Keep("/tonebase:" + rr, L, () => j.K("Mix2", 1, new float[] { 0.65f, 0.35f }, null, j.Guided(L, rr, 0.012f), j.FastGauss(L, 40 * src.Scale)));
                 }
                 float gm = (float)Math.Pow(2, -br * 1.15), ekk = (float)Math.Pow(2, expo);
-                return j.K("ToneCore", 3, new float[] { br, am, co, sa, sh, hi, wa, expo, gm, ekk }, new int[] { lb != null ? 1 : 0 }, s0, lb);
+                return j.K("ToneCore", 3, new float[] { br, am, co, sa, sh, hi, wa, expo, gm, ekk, vi }, new int[] { lb != null ? 1 : 0 }, s0, lb);
             });
             if (gpu != null) return gpu;
             Img o = src.Clone();
@@ -98,6 +107,21 @@ namespace PixTune
                         float cs = mx > 1e-4f ? (mx - mn) / mx : 0;
                         float ff = f > 1 ? 1 + (f - 1) * (1 - 0.55f * cs) : f;
                         Ops.Saturate(ref r, ref g, ref b, ff);
+                    }
+                    if (vi != 0)
+                    {
+                        float mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
+                        float cs = mx > 1e-4f ? (mx - mn) / mx : 0;
+                        // what already has colour hardly moves; what has none moves most
+                        float wgt = (1 - cs) * (1 - cs);
+                        // skin is the first thing a colour slider ruins, so it is held back: orange hues, where
+                        // green sits about half way between blue and red, and only where there is light to see
+                        if (r > g && g > b && mx > 0.15f)
+                        {
+                            float t2 = r - b > 1e-4f ? (g - b) / (r - b) : 0f;
+                            wgt *= 1 - 0.7f * (1 - Math.Min(1f, Math.Abs(t2 - 0.5f) / 0.3f));
+                        }
+                        Ops.Saturate(ref r, ref g, ref b, 1 + vi * wgt);
                     }
                     if (wa != 0)
                     {

@@ -10,7 +10,7 @@ function global:Expect([bool]$ok, [string]$what) { $script:Trace.Add(("{0} {1}" 
 
 function global:New-GtStep([string]$id, [int]$style) {
     $s = New-Object PixTune.Step $id
-    foreach ($k in 'strength', 'brightness', 'contrast', 'saturation', 'structure', 'sharpening', 'ambiance', 'shadows', 'highlights', 'warmth', 'glow', 'grain', 'amount', 'high', 'mid', 'low', 'temperature', 'tint', 'blur', 'wash', 'halation', 'vignette', 'texstrength', 'leaks', 'scratches') { $s.Set($k, 30) }
+    foreach ($k in 'strength', 'brightness', 'contrast', 'saturation', 'vibrance', 'structure', 'sharpening', 'ambiance', 'shadows', 'highlights', 'warmth', 'glow', 'grain', 'amount', 'high', 'mid', 'low', 'temperature', 'tint', 'blur', 'wash', 'halation', 'vignette', 'texstrength', 'leaks', 'scratches') { $s.Set($k, 30) }
     $s.Set('style', $style); $s.Set('cx', 0.4); $s.Set('cy', 0.55)
     if ($id -eq 'grunge') { $s.Set('texture', $style) }   # grunge's five textures are its own setting
     $s.S['curve_rgb'] = '0,0;0.3,0.4;1,1'; $s.S['curve_lum'] = '0,0;0.6,0.5;1,1'
