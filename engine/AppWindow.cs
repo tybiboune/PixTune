@@ -519,9 +519,16 @@ namespace PixTune
             string seg = Segmenter.Working;
             if (LivePortrait.Working) seg = "Redrawing the face";
             if (!string.IsNullOrEmpty(SubjectPicker.Working)) seg = SubjectPicker.Working;
-            if (!string.IsNullOrEmpty(seg) && Canvas.Busy && Canvas.Status != seg + "...") SetStatus(seg + "...");
-            if (Canvas.Busy && p > 0) SetStatus(string.Format("{0}... {1}%", what, (int)(100 * p)));
+            string msg = null;
+            if (!string.IsNullOrEmpty(seg) && Canvas.Busy) msg = seg + "...";
+            if (Canvas.Busy && p > 0) msg = string.Format("{0}... {1}%", what, (int)(100 * p));
+            // The status line drops whatever it is given after seven seconds, so a message about work that is over
+            // used to sit there through the next zoom or slider move, and reading "Finding the subject..." again
+            // looks like finding it again. It comes down with the work instead.
+            if (msg != null) { if (Canvas.Status != msg) SetStatus(msg); workShown = msg; }
+            else if (workShown != null) { if (Canvas.Status == workShown) SetStatus(""); workShown = null; }
         }
+        string workShown;   // the message this put up, so it can take it down again
 
         void UpdateZoomButtons()
         {

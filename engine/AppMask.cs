@@ -188,6 +188,9 @@ namespace PixTune
             if (MaskTiles == null) return;
             bool ok = TestMaskable();
             bool folded = Settings.MaskFolded;
+            // the panel is in front of the user: the subject model starts loading now instead of inside the click
+            // that asks for it, which is what made a first tap on Subject take twice as long as the detection
+            if (ok && !folded) Segmenter.WarmUp(true);
             Step s = Step;
             MaskFold.Text = G(folded ? 0xE70D : 0xE70E);
             MaskState.Text = !ok ? (Mode != "tool" ? "open a tool to mask it" : "not used by this tool")

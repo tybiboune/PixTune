@@ -35,7 +35,25 @@ namespace PixTune
         }
         public static bool Available { get { EnsureLoaded(); return ok; } }
         public static void Reset() { lock (loadLk) { if (!ok) tried = false; } }
-        public static void WarmUp() { if (!tried && Installed) Task.Factory.StartNew(EnsureLoaded); }
+        public static void WarmUp() { WarmUp(false); }
+
+        // Starts the runtime, and with subject the subject model as well, away from the window. Opening that
+        // model on the card takes about three seconds, and it used to happen inside the click that asked for the
+        // mask: a first click on Subject cost six seconds where the detection itself is under three. The panel
+        // calls this as soon as a tool that can be masked is open, so the model is ready before it is wanted.
+        public static void WarmUp(bool withSubject)
+        {
+            if (!Installed) return;
+            if (withSubject ? warming : tried) return;
+            if (withSubject) warming = true;
+            Task.Factory.StartNew(() =>
+            {
+                EnsureLoaded();
+                // a failure here is not reported: the click that really needs the model opens it again and says so
+                if (withSubject && ok) try { Session(false); } catch { }
+            });
+        }
+        static volatile bool warming;
 
         // The runtime starts once; each model is loaded the first time its kind of mask is asked for (a Sky mask
         // does not wait for the larger subject model, and an unused model takes no graphics memory).
