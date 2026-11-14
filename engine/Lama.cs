@@ -66,6 +66,12 @@ namespace PixTune
                     new[] { "mobilesam-onnx-float/encoder.data", "pick\\encoder.data", "57C0F73C068F8C1F6845AB2965E4BDD8458C313B45F85FCCA76B29F0E4644C95" },
                     new[] { "mobilesam-onnx-float/decoder.onnx", "pick\\decoder.onnx", "140021AAADC4BD2512BC84D9DDE5E3438F3387F5B999974A545A368CC296ECA4" },
                     new[] { "mobilesam-onnx-float/decoder.data", "pick\\decoder.data", "A19306330820B9F05398ECDCE0EADDEED4777A12E3C5FDE67F8728CB450CDF2C" }) } },
+            // Finding faces: SCRFD-10GF (InsightFace, research licence), which unlike the detector built into
+            // Windows sees a face turned away, tipped down or half behind a hand, and hands back five points
+            // with each one. engine\FaceDetect.cs says what that buys.
+            { "faces", new[] {
+                File1("https://huggingface.co/Nomnommish/FaceDetection/resolve/54638f62adc8db57dc61a3d8fbd0caa64019ed19/det_10g.onnx",
+                    "faces\\scrfd_10g.onnx", "5838F7FE053675B1C7A08B633DF49E7AF5495CEE0493C7DCF6697200B85B5B91", 16923827, "face detector") } },
             // Lens Blur's depth mode: Depth Anything V2 Small (Apache-2.0, onnx-community export pinned to one
             // revision). The small one on purpose, not for its size: the bigger families hand back the subject
             // as a near-flat cut-out, which turns hair into a hard silhouette, where this one keeps the strands

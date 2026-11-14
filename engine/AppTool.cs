@@ -306,6 +306,9 @@ namespace PixTune
             { "headpose", new AiPack { Title = "AI head pose", Installed = () => LivePortrait.Installed,
                 Lines = new[] { "LivePortrait (MIT licence), ONNX version from huggingface.co" },
                 Note = "Each change of turn, tilt or smile then takes about 5 to 15 seconds." } },
+            { "faces", new AiPack { Title = "Better face finding", Installed = () => FaceDetect.Installed,
+                Lines = new[] { "SCRFD (InsightFace, research licence), ONNX version from huggingface.co" },
+                Note = "Windows' own face finder only sees faces looking at the camera. This one finds a face turned away, tipped down or half behind a hand, which is most photographs of children." } },
             { "depth", new AiPack { Title = "Depth for Lens Blur", Installed = () => Depther.Installed,
                 Lines = new[] { "Depth Anything V2 Small (Apache 2.0 licence), ONNX version from huggingface.co" },
                 Note = "It works out how far away everything in the photo is, once, so the blur can follow the real depth. After that, moving the focus is instant." } },
@@ -340,7 +343,7 @@ namespace PixTune
                     return;
                 }
                 AiSetupRunning = null;
-                Lama.Reset(); Diffusion.Reset(); Upscaler.Reset(); Segmenter.Reset(); Denoiser.Reset(); LivePortrait.Reset(); SubjectPicker.Reset(); Depther.Reset(); SmartMask.Forget();
+                Lama.Reset(); Diffusion.Reset(); Upscaler.Reset(); Segmenter.Reset(); Denoiser.Reset(); LivePortrait.Reset(); SubjectPicker.Reset(); Depther.Reset(); FaceDetect.Reset(); SmartMask.Forget();
                 bool ok = string.IsNullOrEmpty(e.Error) && p.Installed();
                 SetStatus(ok ? "AI files installed" : "AI download failed: " + e.Error);
                 if (done != null) done(ok);
@@ -372,6 +375,16 @@ namespace PixTune
         // "x,y,w,h;..." of each face, as fractions of the picture; "" when none (or no detector)
         public string FindFaces(Img im)
         {
+            // SCRFD when it is there: it sees the turned and tipped faces that Windows' own detector cannot,
+            // which is most photographs of people doing anything. Windows is the fallback, and it is enough
+            // for a face looking at the camera.
+            if (FaceDetect.Installed)
+            {
+                List<FaceDetect.Found> got = FaceDetect.Detect(im);
+                if (got != null && got.Count > 0) { FaceError = ""; return FaceDetect.AsText(got); }
+                if (got != null) { FaceError = ""; return ""; }
+                FaceError = "the better face finder: " + FaceDetect.LastError;
+            }
             try
             {
                 Type tDet = Type.GetType("Windows.Media.FaceAnalysis.FaceDetector, Windows.Media.FaceAnalysis, ContentType=WindowsRuntime", true);

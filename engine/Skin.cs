@@ -95,6 +95,52 @@ namespace PixTune
             return a;
         }
 
+        // Anchors from the five points a detector gives with each face: the two eyes, the nose, and the
+        // corners of the mouth. Everything else here is worked out from those, which is enough for regions
+        // that are soft at their edges anyway.
+        static Anchors FromFive(float[] box, Img im)
+        {
+            List<FaceDetect.Found> got = FaceDetect.Installed ? FaceDetect.Detect(im) : null;
+            if (got == null) return null;
+            // the detected face that matches this box best
+            FaceDetect.Found best = null;
+            float bestOver = 0;
+            foreach (FaceDetect.Found g in got)
+            {
+                float x1 = Math.Max(box[0], g.X), y1 = Math.Max(box[1], g.Y);
+                float x2 = Math.Min(box[0] + box[2], g.X + g.W), y2 = Math.Min(box[1] + box[3], g.Y + g.H);
+                float over = Math.Max(0, x2 - x1) * Math.Max(0, y2 - y1);
+                if (over > bestOver) { bestOver = over; best = g; }
+            }
+            if (best == null || best.Pts == null) return null;
+            float[] P = best.Pts;
+            Anchors a = new Anchors();
+            a.EyeRX = P[0] * im.W; a.EyeRY = P[1] * im.H;
+            a.EyeLX = P[2] * im.W; a.EyeLY = P[3] * im.H;
+            float span = (float)Math.Sqrt((a.EyeLX - a.EyeRX) * (a.EyeLX - a.EyeRX) + (a.EyeLY - a.EyeRY) * (a.EyeLY - a.EyeRY));
+            span = Math.Max(span, best.W * im.W * 0.25f);          // a face in profile has its eyes close together
+            a.EyeR = Math.Max(2f, span * 0.22f);
+            a.NoseX = P[4] * im.W; a.NoseY = P[5] * im.H;
+            a.MouthX = (P[6] + P[8]) * 0.5f * im.W; a.MouthY = (P[7] + P[9]) * 0.5f * im.H;
+            a.MouthHalf = Math.Max(3f, Math.Abs(P[6] - P[8]) * im.W * 0.5f + span * 0.12f);
+            a.BrowY = (a.EyeLY + a.EyeRY) * 0.5f - span * 0.28f;
+            a.ChinY = a.MouthY + (a.MouthY - a.NoseY) * 1.6f;
+            a.Size = Math.Max(span * 2.6f, best.W * im.W);
+            // an oval over the face the detector marked, a little taller than the box to take in the chin
+            int n = 24;
+            a.Hull = new float[n * 2];
+            float cx = (best.X + best.W * 0.5f) * im.W, cy = (best.Y + best.H * 0.55f) * im.H;
+            float rx = best.W * im.W * 0.56f, ry = best.H * im.H * 0.62f;
+            for (int i = 0; i < n; i++)
+            {
+                double t = -2 * Math.PI * i / n;
+                a.Hull[i * 2] = cx + (float)Math.Cos(t) * rx;
+                a.Hull[i * 2 + 1] = cy + (float)Math.Sin(t) * ry;
+            }
+            a.Wind = Winding(a.Hull);
+            return a;
+        }
+
         static Anchors Find(float[] L, Img im)
         {
             if (L == null || L.Length < 468 * 3) return null;
@@ -246,9 +292,11 @@ namespace PixTune
                     float[] L = FaceMesh.Available ? FaceMesh.Landmarks(src, f) : null;
                     Anchors an = Find(L, src);
                     if (an != null) fromMesh++;
-                    // no landmarks - a face turned too far, or hidden behind a hand - but there is still a box,
-                    // and a rough face is a great deal better than treating the whole photo as skin
-                    else an = FromBox(f, src);
+                    // No landmarks - a face turned too far, or hidden behind a hand. The detector's own five
+                    // points say where the eyes, nose and mouth corners really are, which beats guessing them
+                    // from the box; failing those, the box's proportions, which is still far better than
+                    // treating the whole photograph as skin.
+                    else an = FromFive(f, src) ?? FromBox(f, src);
                     all.Add(an);
                 }
             a.FromMesh = fromMesh > 0;

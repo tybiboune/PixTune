@@ -63,6 +63,7 @@ namespace PixTune
             Denoiser.RuntimePath = Lama.RuntimePath; Denoiser.Dir = Path.Combine(Lama.Dir, "denoise");
             SubjectPicker.RuntimePath = Lama.RuntimePath; SubjectPicker.Dir = Path.Combine(Lama.Dir, "pick");
             Depther.RuntimePath = Lama.RuntimePath; Depther.Dir = Path.Combine(Lama.Dir, "depth");
+            FaceDetect.RuntimePath = Lama.RuntimePath; FaceDetect.Dir = Path.Combine(Lama.Dir, "faces");
             GpuCheck.Root = Lama.Dir;
             GpuCheck.Load(Settings.GpuModels);
             GpuCheck.LoadSpeed(Settings.GpuSpeed);
