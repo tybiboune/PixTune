@@ -680,15 +680,19 @@ namespace PixTune
             {
                 f.Text = "Settings"; f.StartPosition = FormStartPosition.CenterParent; f.FormBorderStyle = FormBorderStyle.FixedDialog;
                 f.MaximizeBox = false; f.MinimizeBox = false;
-                f.ClientSize = new Size(S(460), S(450));
                 int y = 16;
-                Action<string, Control> row = (label, ctrl) =>
+                // A row is 40 high. The two rows at the bottom carry a button and what it found beside it and
+                // need more, so a row says how much room it takes and the window is sized to the total at the end.
+                Action<string, Control, int> rowOf = (label, ctrl, h) =>
                 {
                     Label l = new Label(); l.Text = label; l.AutoSize = true; l.Location = new Point(S(16), S(y + 4));
                     ctrl.Location = new Point(S(170), S(y));
                     f.Controls.Add(l); f.Controls.Add(ctrl);
-                    y += 40;
+                    y += h;
                 };
+                Action<string, Control> row = (label, ctrl) => rowOf(label, ctrl, 40);
+                const int Wide = 500, Side = 300, SideW = 184;   // the window, where the right column starts, its width
+                f.ClientSize = new Size(S(Wide), S(450));
                 ComboBox fmt = new ComboBox(); fmt.DropDownStyle = ComboBoxStyle.DropDownList; fmt.Width = S(120);
                 fmt.Items.AddRange(new object[] { "JPG", "PNG", "TIF" }); fmt.SelectedItem = Settings.Format.ToUpperInvariant();
                 row("Format", fmt);
@@ -713,9 +717,9 @@ namespace PixTune
                 ComboBox ap = new ComboBox(); ap.DropDownStyle = ComboBoxStyle.DropDownList; ap.Width = S(160);
                 ap.Items.AddRange(new object[] { "Dark", "Light" }); ap.SelectedItem = Settings.Appearance == "Light" ? "Light" : "Dark";
                 row("Appearance", ap);
-                TextBox dir = new TextBox(); dir.Text = Settings.ExportDir; dir.Width = S(220);
+                TextBox dir = new TextBox(); dir.Text = Settings.ExportDir; dir.Width = S(260);
                 row("Export folder", dir);
-                Button br = new Button(); br.Text = "..."; br.Size = new Size(S(36), S(24)); br.Location = new Point(S(396), S(y - 40)); br.FlatStyle = FlatStyle.Flat;
+                Button br = new Button(); br.Text = "..."; br.Size = new Size(S(36), S(24)); br.Location = new Point(S(438), S(y - 40)); br.FlatStyle = FlatStyle.Flat;
                 br.Click += (s, e) =>
                 {
                     using (FolderBrowserDialog d = new FolderBrowserDialog()) { d.SelectedPath = dir.Text; if (d.ShowDialog() == DialogResult.OK) dir.Text = d.SelectedPath; }
@@ -723,8 +727,9 @@ namespace PixTune
                 f.Controls.Add(br);
                 // AI models on the graphics card: what the GPU check found, and a button to check them all again
                 Button gt = new Button(); gt.Text = "Auto test GPU"; gt.Size = new Size(S(120), S(26)); gt.FlatStyle = FlatStyle.Flat;
-                Label gs = new Label(); gs.AutoSize = false; gs.Size = new Size(S(160), S(38)); gs.Location = new Point(S(296), S(y));
-                row("GPU use", gt);
+                // two lines beside the button: where the image tools run, and where the AI models run
+                Label gs = new Label(); gs.AutoSize = false; gs.Size = new Size(S(SideW), S(34)); gs.Location = new Point(S(Side), S(y - 2));
+                rowOf("GPU use", gt, 48);
                 f.Controls.Add(gs);
                 Action showGpu = () =>
                 {
@@ -755,10 +760,12 @@ namespace PixTune
                 };
                 // which version this is, and a button to look on GitHub for a newer one
                 Button ut = new Button(); ut.Text = "Check for updates"; ut.Size = new Size(S(120), S(26)); ut.FlatStyle = FlatStyle.Flat;
-                Label us = new Label(); us.AutoSize = false; us.Size = new Size(S(160), S(38)); us.Location = new Point(S(296), S(y));
+                // which version this copy is, and under it the daily look: the box used to be drawn inside the
+                // line above it and half under the OK button
+                Label us = new Label(); us.AutoSize = false; us.Size = new Size(S(SideW), S(20)); us.Location = new Point(S(Side), S(y + 3));
                 CheckBox au = new CheckBox(); au.Text = "look once a day"; au.Checked = Settings.CheckUpdates;
-                au.AutoSize = true; au.Location = new Point(S(296), S(y + 20)); au.ForeColor = Theme.Dim;
-                row("Version", ut);
+                au.AutoSize = true; au.Location = new Point(S(Side), S(y + 26)); au.ForeColor = Theme.Dim;
+                rowOf("Version", ut, 56);
                 f.Controls.Add(us); f.Controls.Add(au);
                 Action showUpd = () =>
                 {
@@ -780,8 +787,11 @@ namespace PixTune
                 utTimer.Start();
                 f.FormClosed += (s, e) => { utTimer.Stop(); utTimer.Dispose(); };
                 ut.Click += (s, e) => LookForUpdate(true);
-                Button ok = new Button(); ok.Text = "OK"; ok.DialogResult = DialogResult.OK; ok.Location = new Point(S(270), S(402)); ok.Size = new Size(S(84), S(32));
-                Button ca = new Button(); ca.Text = "Cancel"; ca.DialogResult = DialogResult.Cancel; ca.Location = new Point(S(362), S(402)); ca.Size = new Size(S(84), S(32));
+                // the window is as tall as the rows came out, with the two buttons under them
+                int by = y + 12;
+                f.ClientSize = new Size(S(Wide), S(by + 32 + 16));
+                Button ok = new Button(); ok.Text = "OK"; ok.DialogResult = DialogResult.OK; ok.Location = new Point(S(Wide - 16 - 84 - 8 - 84), S(by)); ok.Size = new Size(S(84), S(32));
+                Button ca = new Button(); ca.Text = "Cancel"; ca.DialogResult = DialogResult.Cancel; ca.Location = new Point(S(Wide - 16 - 84), S(by)); ca.Size = new Size(S(84), S(32));
                 f.Controls.AddRange(new Control[] { ok, ca }); f.AcceptButton = ok; f.CancelButton = ca; f.ActiveControl = ok;
                 DarkDialog(f);
                 if (f.ShowDialog(Form) != DialogResult.OK) return;
