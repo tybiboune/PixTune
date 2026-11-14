@@ -902,7 +902,7 @@ namespace PixTune
         // pictures only: a full-resolution copy is 12 bytes a pixel, and full renders are one-offs anyway.
         // (false does the work every time, which is the yardstick this was measured against.)
         public static bool KeepBlur = true;
-        class Blurred { public float[] Print; public int W, H; public float Strength; public int Bokeh; public bool Depth; public Img[] B; }
+        class Blurred { public float[] Print; public int W, H; public float Strength, Thr; public int Bokeh; public bool Depth; public Img[] B; }
         static readonly List<Blurred> blurs = new List<Blurred>();
         public static void ForgetBlurs() { lock (blurs) blurs.Clear(); }
         static float[] BlurPrint(Img im)
@@ -919,12 +919,13 @@ namespace PixTune
             for (int i = 0; i < p.Length; i++) p[i] /= Math.Max(1, cnt[i / 3]);
             return p;
         }
-        static Img[] KeptBlur(Img src, float strength, int bokeh, bool depth, float[] print)
+        static Img[] KeptBlur(Img src, float strength, int bokeh, bool depth, float thr, float[] print)
         {
             lock (blurs)
                 foreach (Blurred b in blurs)
                 {
-                    if (b.W != src.W || b.H != src.H || b.Bokeh != bokeh || b.Depth != depth || Math.Abs(b.Strength - strength) > 1e-4f) continue;
+                    if (b.W != src.W || b.H != src.H || b.Bokeh != bokeh || b.Depth != depth
+                        || Math.Abs(b.Strength - strength) > 1e-4f || Math.Abs(b.Thr - thr) > 1e-4f) continue;
                     bool same = true;
                     for (int i = 0; i < print.Length && same; i++) if (Math.Abs(b.Print[i] - print[i]) > 0.004f) same = false;
                     if (same) return b.B;
@@ -1075,7 +1076,7 @@ namespace PixTune
             float maxR = strength * 0.02f * src.Diagonal;
             bool keep = KeepBlur && (long)src.W * src.H <= 6000000;
             float[] bprint = keep ? BlurPrint(src) : null;
-            Img[] lv = keep ? KeptBlur(src, strength, bokeh, depth, bprint) : null;
+            Img[] lv = keep ? KeptBlur(src, strength, bokeh, depth, thr, bprint) : null;
             bool fromKeep = lv != null;
             if (lv == null)
             {
@@ -1092,7 +1093,7 @@ namespace PixTune
                     foreach (Img b in lv) b.Stable = true;     // held for the next frame, out of the pool's reach
                     lock (blurs)
                     {
-                        blurs.Add(new Blurred { Print = bprint, W = src.W, H = src.H, Strength = strength, Bokeh = bokeh, Depth = depth, B = lv });
+                        blurs.Add(new Blurred { Print = bprint, W = src.W, H = src.H, Strength = strength, Thr = thr, Bokeh = bokeh, Depth = depth, B = lv });
                         while (blurs.Count > 2) blurs.RemoveAt(0);
                     }
                     fromKeep = true;

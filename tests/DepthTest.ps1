@@ -106,4 +106,29 @@ St 'the lens shape reaches the highlights' {
     Expect ($areas[1] -lt $areas[0] * 0.75) ("the triangle covers less than the circle ({0} against {1})" -f $areas[1], $areas[0])
     Expect ($areas[2] -lt $areas[0] * 0.6) ("and the ring less again, being a ring ({0} against {1})" -f $areas[2], $areas[0])
 }
+St 'threshold changes the picture' {
+    $w = 300; $h = 300
+    $im = New-Object PixTune.Img $w, $h
+    # a gradient from dim to bright, so a threshold has something to choose between
+    for ($y = 0; $y -lt $h; $y++) { for ($x = 0; $x -lt $w; $x++) {
+        $v = 0.25 + 0.8 * ($x / [double]$w)
+        $j = ($y * $w + $x) * 3; $im.D[$j] = $v; $im.D[$j+1] = $v * 0.95; $im.D[$j+2] = $v * 0.9 } }
+    for ($k = 0; $k -lt 6; $k++) { $j = ((40 + $k * 40) * $w + (30 + $k * 45)) * 3; $im.D[$j] = 30; $im.D[$j+1] = 27; $im.D[$j+2] = 22 }
+    $prev = $null
+    foreach ($t in 0, 40, 100) {
+        $s = New-Object PixTune.Step 'lensblur'
+        $s.Set('shape', 0); $s.Set('strength', 70); $s.Set('transition', 0); $s.Set('vignette', 0)
+        $s.Set('bokeh', 0); $s.Set('bokehthreshold', $t); $s.Set('cx', 0.02); $s.Set('cy', 0.02); $s.Set('rx', 0.01); $s.Set('ry', 0.01)
+        $o = [PixTune.Pipeline]::Apply($im, $s)
+        $sum = 0.0; for ($i = 0; $i -lt $o.D.Length; $i += 7) { $sum += $o.D[$i] }
+        if ($null -ne $prev) {
+            $diff = 0.0; for ($i = 0; $i -lt $o.D.Length; $i += 7) { $diff += [Math]::Abs($o.D[$i] - $prev[$i]) }
+            $per = $diff / [Math]::Ceiling($o.D.Length / 7.0)
+            # the blurred copy is kept between frames, and what it is kept under has to mention everything that
+            # changes it: the threshold was missing from that, so moving the slider did nothing at all
+            Expect ($per -gt 0.002) ("moving the bokeh threshold to {0} changes the picture ({1:N5} a pixel)" -f $t, $per)
+        }
+        $prev = $o.D.Clone()
+    }
+}
 Start-StRun -Log 'depth.log'
