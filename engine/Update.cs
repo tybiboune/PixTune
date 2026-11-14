@@ -221,9 +221,66 @@ namespace PixTune
                 foreach (string f in Directory.GetFiles(nat)) Copy(f, dst);
             }
         }
+        // The native folder holds the libraries this very process has loaded: libraw once a RAW file has been
+        // opened, onnxruntime once any AI model has run. Windows will not let a loaded library be written, and
+        // the update stopped there with "the process cannot access the file libraw.dll". They hardly ever change
+        // between versions, so a file that is already the same byte for byte is left alone, which is the usual
+        // case; one that really has changed is moved aside, which Windows does allow while it is open, and what
+        // is left behind is swept up at the next start.
         static void Copy(string file, string toDir)
         {
-            File.Copy(file, Path.Combine(toDir, Path.GetFileName(file)), true);
+            string to = Path.Combine(toDir, Path.GetFileName(file));
+            if (Same(file, to)) return;
+            try { File.Copy(file, to, true); }
+            catch (IOException)
+            {
+                try { File.Move(to, to + OldMark + DateTime.Now.ToString("yyyyMMddHHmmss")); }
+                catch (IOException)
+                {
+                    throw new IOException(Path.GetFileName(to) + " is in use and could not be replaced. Close PixTune"
+                        + " and run the update again.");
+                }
+                File.Copy(file, to, true);
+            }
+        }
+
+        public const string OldMark = ".replaced-";
+
+        static bool Same(string a, string b)
+        {
+            try
+            {
+                FileInfo fa = new FileInfo(a), fb = new FileInfo(b);
+                if (!fb.Exists || fa.Length != fb.Length) return false;
+                using (FileStream sa = File.OpenRead(a))
+                using (FileStream sb = File.OpenRead(b))
+                {
+                    byte[] ba = new byte[65536], bb = new byte[65536];
+                    int n;
+                    while ((n = sa.Read(ba, 0, ba.Length)) > 0)
+                    {
+                        int m = 0;
+                        while (m < n) { int k = sb.Read(bb, m, n - m); if (k <= 0) return false; m += k; }
+                        for (int i = 0; i < n; i++) if (ba[i] != bb[i]) return false;
+                    }
+                    return true;
+                }
+            }
+            catch (Exception) { return false; }   // cannot tell: copy it and find out
+        }
+
+        // A library that was in use when it was replaced is still on disk under its old name. It is not in use
+        // now, at the start of the next run, so it goes.
+        public static void SweepReplaced(string root)
+        {
+            try
+            {
+                string nat = Path.Combine(root, "native");
+                if (!Directory.Exists(nat)) return;
+                foreach (string f in Directory.GetFiles(nat, "*" + OldMark + "*"))
+                    try { File.Delete(f); } catch (Exception) { }
+            }
+            catch (Exception) { }
         }
     }
 }

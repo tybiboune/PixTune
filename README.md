@@ -230,6 +230,13 @@ the folder is left alone. It will only fetch from `github.com` and its own conte
 nothing is put in place until the download has been unpacked and found to be a PixTune folder. Turn the daily
 look off with the tick box beside the button.
 
+The `native` folder holds libraries this very process has loaded: `libraw.dll` once a RAW file has been opened,
+`onnxruntime.dll` once any AI model has run. Windows will not let a loaded library be written, so the update used
+to stop with "the process cannot access the file libraw.dll". They hardly ever change between versions, so one
+that is already the same byte for byte is left alone; one that really has changed is moved aside, which Windows
+does allow while it is open, and what is left behind is swept up at the next start. A file held so tightly that
+it cannot even be renamed stops the update, which then says which file it was.
+
 ## Saturation and vibrance
 
 Tune Image has both, vibrance under saturation. Saturation moves every colour by as much, so the colours that

@@ -67,6 +67,7 @@ namespace PixTune
             GpuCheck.LoadSpeed(Settings.GpuSpeed);
             // which version this is, and a quiet look for a newer one once a day (it only asks, never installs)
             Updater.ReadVersion(App.Root);
+            Updater.SweepReplaced(App.Root);   // a library an update had to move aside is not in use now
             if (Settings.CheckUpdates) LookForUpdate(false);
             // results found by the check or by a model failing in use are kept in the settings
             GpuCheck.Changed += (s, e) => OnUi(() => { Settings.GpuModels = GpuCheck.Save(); Settings.GpuSpeed = GpuCheck.Speed; Settings.Save(); });
