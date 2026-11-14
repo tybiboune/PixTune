@@ -33,7 +33,9 @@ namespace PixTune
         {
             new KeyValuePair<string, string[]>("Adjust", new string[] { "tune", "details", "curves", "wb", "color", "dehaze", "rawdev" }),
             new KeyValuePair<string, string[]>("Transform", new string[] { "crop", "perspective", "expand" }), // 'rotate' stays available for older edit stacks
-            new KeyValuePair<string, string[]>("Retouch", new string[] { "selective", "brush", "healing", "portrait", "headpose", "face" }),
+            new KeyValuePair<string, string[]>("Retouch", new string[] { "selective", "brush", "healing" }),
+            // everything to do with a face in one place, rather than scattered through Retouch
+            new KeyValuePair<string, string[]>("Portrait", new string[] { "portrait", "face", "headpose" }),
             new KeyValuePair<string, string[]>("Film", new string[] { "film", "bloom", "halation", "grain", "grainy" }),
             new KeyValuePair<string, string[]>("Styles", new string[] { "hdr", "glamour", "tonal", "drama", "vintage", "retrolux", "grunge", "bw", "noir" }),
             new KeyValuePair<string, string[]>("Creative", new string[] { "lensblur", "vignette", "double", "text", "frames" }),
@@ -839,24 +841,21 @@ namespace PixTune
             Register(new ToolDef
             {
                 Id = "portrait", Name = "Portrait", Glyph = G(0xE77B), Canvas = "Adjust",
-                // Skin smoothing is the old single slider, which blurs every bit of skin alike. The six below
-                // each work through their own map of one kind of fault, so taking a blemish out does not cost
-                // the pores, and Keep texture puts the grain back over whatever the others did.
-                Params = new List<Prm> { P("spotlight", "Face spotlight", 0, 100, 25), P("smoothing", "Skin smoothing", 0, 100, 25), P("eyes", "Eye clarity", 0, 100, 25),
+                // Nothing is on to begin with. Every part is the owner's to switch on and set, and no setting
+                // arrives already applied: a face is not something to correct by default.
+                Params = new List<Prm> { P("spotlight", "Face spotlight", 0, 100, 0), P("smoothing", "Skin smoothing", 0, 100, 0), P("eyes", "Eye clarity", 0, 100, 0),
                     P("spots", "Spots", 0, 100, 0), P("redness", "Redness", 0, 100, 0), P("wrinkles", "Lines", 0, 100, 0),
-                    P("shine", "Shine", 0, 100, 0), P("undereye", "Under eyes", 0, 100, 0), P("keeptexture", "Keep texture", 0, 100, 60) },
+                    P("shine", "Shine", 0, 100, 0), P("undereye", "Under eyes", 0, 100, 0), P("keeptexture", "Keep texture", 0, 100, 0) },
                 Setup = () =>
                 {
                     GetFacesForStep(); SyncFacesOverlay();
-                    AddSection("Presets");
-                    // name, spotlight, smoothing, eyes
-                    object[][] pre = { new object[] { "Natural", 25, 25, 25 }, new object[] { "Smooth", 15, 70, 15 }, new object[] { "Spotlight", 70, 30, 30 }, new object[] { "Bright eyes", 20, 25, 80 },
-                        new object[] { "Soft", 10, 50, 10 }, new object[] { "Strong", 60, 60, 60 }, new object[] { "Subtle", 10, 15, 15 }, new object[] { "None", 0, 0, 0 } };
-                    AddTiles(pre.Select(v => T((string)v[0], "", v)).ToList(), -1, 70, 34, (i, t) =>
-                    {
-                        object[] v = (object[])((TileTag)t.Tag).Data;
-                        Hashtable h = new Hashtable(); h["spotlight"] = v[1]; h["smoothing"] = v[2]; h["eyes"] = v[3]; SetParams(h);
-                    });
+                    // Where a red patch is sent. There is no single right answer - a flush taken out
+                    // completely can look waxy, and left in can look sunburnt - so it is the owner's choice.
+                    AddSection("Redness goes to");
+                    string[] ways = { "This skin", "Half way", "Warm", "Even" };
+                    AddTiles(ways.Select(v => T(v, "")).ToList(), Step.I("rednessway", 0), 74, 34,
+                        (i, t) => { Step.Set("rednessway", i); RequestRender(); });
+                    AddHint("Each part is off until you move its slider. Redness moves colour only, never brightness.");
                     AddSection("Skin tone");
                     string[][] tones = { new[] { "None", "Gray" }, new[] { "Pale", "MistyRose" }, new[] { "Light", "PeachPuff" }, new[] { "Medium", "SandyBrown" }, new[] { "Deep", "Sienna" }, new[] { "Rosy", "LightPink" } };
                     AddTiles(tones.Select(c => new TileSpec { Caption = c[0], Swatch = Color.FromName(c[1]) }).ToList(), Step.I("skintone", 0), 50, 66, (i, t) => { Step.Set("skintone", i); RequestRender(); });

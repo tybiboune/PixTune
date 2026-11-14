@@ -155,7 +155,7 @@ namespace PixTune
             if (faces.Count > 0 && (dSpots > 0 || dRed > 0 || dLines > 0 || dShine > 0 || dUnder > 0))
             {
                 SkinDefects.Maps maps = SkinDefects.Build(src, faces, s.Str("faces", ""));
-                Img fixed_ = SkinDefects.Apply(src, maps, dSpots, dRed, dLines, dShine, dUnder, dKeep);
+                Img fixed_ = SkinDefects.Apply(src, maps, dSpots, dRed, s.I("rednessway", 0), dLines, dShine, dUnder, dKeep);
                 if (fixed_ != null) src = fixed_;
             }
             Img o = src.Clone();

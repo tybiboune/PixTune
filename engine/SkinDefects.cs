@@ -104,8 +104,10 @@ namespace PixTune
             {
                 float sk = a.Skin[i];
                 if (sk <= 0.01f) continue;
+                // A patch a spread and a half above the middle is as red as this face gets, so that is where
+                // the map reads full: asking for two spreads meant a full slider never finished the job.
                 float over = (crBlur[i] - a.CrMid) / crScale;
-                M.Redness[i] = sk * Ops.C01(Ops.SmoothStep(0.4f, 2.0f, over));
+                M.Redness[i] = sk * Ops.C01(Ops.SmoothStep(0.3f, 1.5f, over));
             }
 
             // ---- lines ----
@@ -195,7 +197,7 @@ namespace PixTune
         //
         // Colour is changed without touching brightness, and brightness without touching colour. That is what
         // keeps a face from going grey as the redness comes out of it, or chalky as a shine is brought down.
-        public static Img Apply(Img src, Maps M, float spots, float redness, float lines, float shine, float underEye, float keepTexture)
+        public static Img Apply(Img src, Maps M, float spots, float redness, int rednessWay, float lines, float shine, float underEye, float keepTexture)
         {
             if (M == null) return src.Clone();
             int w = src.W, h = src.H;
@@ -240,13 +242,26 @@ namespace PixTune
                         float under = M.Around[i] - lNow;
                         if (under > 0) yy += 219f * under * M.UnderEye[i] * underEye * 0.8f;
                     }
-                    // redness is a move along one colour axis, so it comes out along that axis alone and the
-                    // brightness above is left exactly as it is
+                    // Redness comes out along the colour axes alone, with the brightness left exactly as it
+                    // is: correct a flush by darkening it and the face goes grey, which is the usual giveaway.
+                    // Where it goes is a choice, because there is no single right answer:
+                    //   0  to this face's own skin - the red patch ends up the colour of the cheek beside it
+                    //   1  only part of the way, so a flush is calmed rather than erased
+                    //   2  to the skin colour but keeping a little warmth, for faces that look dead without it
+                    //   3  the red taken out and nothing put back, which is the coldest and most even
                     if (redness > 0)
                     {
-                        float k = M.Redness[i] * redness;
-                        cr -= (cr - crMid) * k;
-                        cb -= (cb - cbMid) * k * 0.35f;
+                        // The map already carries the skin weight, and the whole correction is faded by that
+                        // same weight at the end: counting it twice is what kept a full slider from ever
+                        // arriving. Here only the confidence in the patch itself is wanted.
+                        float k = (A[i] > 0.05f ? M.Redness[i] / A[i] : 0f) * redness;
+                        if (k > 1f) k = 1f;
+                        float toCr = crMid, toCb = cbMid, cbShare = 0.35f;
+                        if (rednessWay == 1) k *= 0.5f;
+                        else if (rednessWay == 2) { toCr = crMid + M.A.CrSpread * 1.0f; cbShare = 0.15f; }
+                        else if (rednessWay == 3) { toCr = crMid - M.A.CrSpread * 0.6f; cbShare = 0.7f; }
+                        cr -= (cr - toCr) * k;
+                        cb -= (cb - toCb) * k * cbShare;
                     }
                     // and the skin's own grain goes back on top of whatever was done to it
                     if (keepTexture > 0) yy += 219f * M.Fine[i] * M.Texture[i] * keepTexture;

@@ -63,7 +63,7 @@ Tested on Sony A1 II, A6400, A7 V and Nikon D5300, Z50 II, Z6III (lossless, HE, 
 | Expand (one side at a time, up to 25 %; smart, white, black, AI or generative fill) | Grunge (1500 styles, 5 textures, centre, shuffle) |
 | Selective (control points: brightness, contrast, saturation, structure; each zone stretched and turned with handles, like Lens Blur) | Black & White (6 styles, colour filters, grain) |
 | Brush (dodge & burn, exposure, temperature, saturation, eraser, mask) | Noir (14 styles, wash, grain) |
-| Healing: content-aware fill (multi-scale PatchMatch completion) or optional AI mode (LaMa) for spots and objects | Portrait (face spotlight, skin smoothing, eye clarity, skin tones, presets) |
+| Healing: content-aware fill (multi-scale PatchMatch completion) or optional AI mode (LaMa) for spots and objects | Portrait tab: skin by kind of fault (spots, redness with four targets, lines, shine, under eyes, keep texture), plus face spotlight, skin smoothing, eye clarity, skin tones. Nothing is applied until a slider is moved |
 | RAW Develop (with AI denoise) | Head Pose (rotation, pupil size, smile, focal length) |
 | | Face Enhance (eye focus, spotlight, smooth skin brushes) |
 | | Lens Blur (elliptical/linear/depth, 7 bokeh shapes, depth range, transition, bokeh threshold, vignette) |
@@ -299,6 +299,45 @@ already strong hardly does, and it holds back by up to seven tenths on skin: ora
 half way between blue and red, and only where there is light enough to see the colour. On the photo both are
 measured on, at the same setting of 60, saturation took the average colour from 0.42 to 0.57 and moved the skin
 7.8 levels; vibrance took it to 0.47 and moved the skin 1.7.
+
+## Skin, one fault at a time
+
+Everything to do with a face is in its own **Portrait** tab, and nothing in it is on to begin with: each part
+waits for its slider to be moved. One smoothing slider blurs every bit of skin alike, which is why skin
+retouched that way looks like plastic - the blemish and the pores go together. Here each kind of fault gets its
+own map, and the correction is only allowed where its map says so.
+
+The face is found first (SCRFD, with the Windows detector as a fallback), and the regions - forehead, cheeks,
+under the eyes, the fold beside the nose, nose and chin - are laid out either from the 468-point mesh or, on a
+face turned too far for the mesh to fit, from the detector's own five points. The skin colour is then measured
+on that face rather than assumed: on the photo this is written against, the middle sits at Cb 119.3 and Cr
+148.2, each with its own spread, and every map below is read against those numbers. A different face gives
+different ones.
+
+- **Spots** - a blemish is a blob of brightness at its own size. The blob is taken away and the skin around it
+  closes over, while anything finer than the blob stays where it was.
+- **Redness** - how far along the red axis a patch sits from this face's own middle, over an area wide enough
+  to be a flush rather than one noisy pixel.
+- **Lines** - a thin dark valley, looked for at two widths, with only the dark side taken, and counting for
+  more where a face folds anyway.
+- **Shine** and **Under eyes** - brightness above, or below, what the face is doing around it.
+- **Keep texture** - the skin's own grain, put back on top of whatever the others did.
+
+Redness moves colour only and leaves the brightness exactly as it was: correct a flush by darkening it and the
+face goes grey, which is the usual giveaway. Where the red is sent is a choice, because there is no single
+right answer - taken out completely a face can look waxy, left in it can look sunburnt - so **Redness goes to**
+offers four. On the photo above, the red patches start at Cr 155.3 against the face's own 148.2:
+
+| | lands at | |
+|---|---|---|
+| This skin | 150.6 | the patch comes out the colour of the cheek beside it |
+| Half way | 153.0 | the flush calmed rather than erased |
+| Warm | 153.9 | the skin colour with some warmth kept |
+| Even | 148.6 | the red taken out and nothing put back, the flattest of the four |
+
+What it is all for is measured in `tests\SkinTest.ps1`: taking the spots out at full strength leaves the grain
+in the skin where it was (0.02258 against 0.02114 untouched), where the old smoothing slider at 70 takes a
+third of it away (0.01343, 64 % of what was there).
 
 ## Working like the mobile app
 
