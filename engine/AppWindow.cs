@@ -513,7 +513,9 @@ namespace PixTune
         {
             float p = Diffusion.Progress;
             string what = !string.IsNullOrEmpty(Diffusion.Status) ? Diffusion.Status : "Generating the extension";
-            if (Denoiser.Progress > 0) { p = Denoiser.Progress; what = "Removing noise"; }
+            // saying where it is running answers the question the wait raises: the processor took over because
+            // the graphics card could not be trusted with the tiles, and it is much slower
+            if (Denoiser.Progress > 0) { p = Denoiser.Progress; what = Denoiser.OnCpu > 0 ? "Removing noise on the processor" : "Removing noise"; }
             string seg = Segmenter.Working;
             if (LivePortrait.Working) seg = "Redrawing the face";
             if (!string.IsNullOrEmpty(SubjectPicker.Working)) seg = SubjectPicker.Working;

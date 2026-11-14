@@ -25,11 +25,35 @@ namespace PixTune
         public static int Retries = 3;
         public static int Refused;      // tiles the model never settled on, kept as they came in
         public static int Quieted;      // times a tile had to be shown again at a lower level
+        // A card short of memory does not refuse the work: it returns numbers, and they are nonsense. Another
+        // program using the card, or one of the bigger models loaded beside this one, is enough, and a whole
+        // photo would come back untouched with nothing said. So a tile the card gives up on is shown to the
+        // same model on the processor, and if the processor settles where the card did not, the card is not
+        // asked again for the rest of this picture: it is about eight times slower a tile, but it answers.
+        // (false leaves a tile the card gives up on as it came in, the way this used to work)
+        public static bool CpuFallback = true;
+        public static int OnCpu;        // tiles the processor had to take over
+        // leaves the card out from the first tile, which is where a run ends up anyway once it gives up on one:
+        // the way the test gets at the processor without a card that misbehaves
+        public static bool SkipCard;
         public static string Dir = "", RuntimePath = "", Device = "", LastError = "";
         public static volatile float Progress;
         static volatile bool tried, ok;
         static readonly object loadLk = new object(), runLk = new object();
         static OrtSession session;
+        static OrtSession cpuSession;
+        static bool cpuTried;
+
+        // The same model on the processor, opened only if the card ever gives up on a tile: its weights are
+        // 460 MB, and nearly every picture goes through without it. Null when it cannot be opened either.
+        static OrtSession CpuModel()
+        {
+            if (cpuTried) return cpuSession;
+            cpuTried = true;
+            try { cpuSession = OrtSession.Open(ModelPath, false, 1); }
+            catch (Exception ex) { LastError = ex.Message; cpuSession = null; }
+            return cpuSession;
+        }
 
         public static string ModelPath { get { return Path.Combine(Dir, "nafnet_denoise.onnx"); } }
         public static bool Installed
@@ -96,7 +120,8 @@ namespace PixTune
             int nx = W <= Tile ? 1 : (int)Math.Ceiling((W - Tile) / (double)step) + 1;
             int ny = H <= Tile ? 1 : (int)Math.Ceiling((H - Tile) / (double)step) + 1;
             int done = 0;
-            Refused = 0; Quieted = 0;
+            Refused = 0; Quieted = 0; OnCpu = 0;
+            bool onCpu = false;   // the card gave up where the processor settled: the rest of this picture is its work
             for (int ty = 0; ty < ny; ty++)
                 for (int tx = 0; tx < nx; tx++)
                 {
@@ -128,17 +153,9 @@ namespace PixTune
                     float k = 1f;
                     if (tmax > 1e-4f && tmax < Comfort) k = Math.Min(MaxLift, Comfort / tmax);
                     if (k != 1f) for (int i = 0; i < buf.Length; i++) buf[i] *= k;
-                    float[] o = null;
-                    bool mad = true;
-                    for (int attempt = 0; attempt <= Retries && mad; attempt++)
-                    {
-                        if (attempt > 0) { for (int i = 0; i < buf.Length; i++) buf[i] *= 0.5f; k *= 0.5f; Quieted++; }
-                        o = session.Run(new Tensor(buf, 1, 3, Tile, Tile)).F;
-                        mad = false;
-                        for (int i = 0; i < o.Length; i++) if (!(o[i] > -Sane && o[i] < Sane)) { mad = true; break; }
-                    }
-                    // the model never settled: keep this tile as it came in rather than show nonsense
-                    if (mad) { o = (float[])buf.Clone(); Refused++; }
+                    float[] o = OneTile(buf, ref k, ref onCpu);
+                    // neither the card nor the processor settled: keep this tile as it came in, not nonsense
+                    if (o == null) { o = (float[])buf.Clone(); Refused++; }
                     if (k != 1f) { float ik = 1f / k; for (int i = 0; i < o.Length; i++) o[i] *= ik; }
                     for (int y = 0; y < Tile && y0 + y < H; y++)
                     {
@@ -160,6 +177,43 @@ namespace PixTune
                 for (int c = 0; c < 3; c++) r.D[i * 3 + c] = Math.Max(0f, Math.Min(1f, acc[i * 3 + c] / w));
             }
             return r;
+        }
+
+        // One tile: the card, and the processor when the card gives up on it. onCpu says the card has already
+        // given up once on this picture, and is set when the processor settles where the card did not, so the
+        // rest of the picture goes straight to the processor instead of being tried four times on the card.
+        static float[] OneTile(float[] buf, ref float k, ref bool onCpu)
+        {
+            if (session.Device == "CPU") return Settle(session, buf, ref k);   // no card to fall back from
+            float k0 = k;
+            if (!onCpu && !SkipCard)
+            {
+                float[] o = Settle(session, buf, ref k);
+                if (o != null || !CpuFallback) return o;
+                // back to the level the card first saw, so the processor starts where the card did
+                if (k != k0) { float back = k0 / k; for (int i = 0; i < buf.Length; i++) buf[i] *= back; k = k0; }
+            }
+            else if (!CpuFallback) return null;
+            OrtSession cpu = CpuModel();
+            if (cpu == null) return null;
+            float[] c = Settle(cpu, buf, ref k);
+            if (c != null) { OnCpu++; onCpu = true; }
+            return c;
+        }
+
+        // Shows the tile to the model, half as bright each time the answer comes back impossible, and returns
+        // the first answer it settles on, or null. buf and k are left where the last try put them.
+        static float[] Settle(OrtSession s, float[] buf, ref float k)
+        {
+            for (int attempt = 0; attempt <= Retries; attempt++)
+            {
+                if (attempt > 0) { for (int i = 0; i < buf.Length; i++) buf[i] *= 0.5f; k *= 0.5f; Quieted++; }
+                float[] o = s.Run(new Tensor(buf, 1, 3, Tile, Tile)).F;
+                bool mad = false;
+                for (int i = 0; i < o.Length; i++) if (!(o[i] > -Sane && o[i] < Sane)) { mad = true; break; }
+                if (!mad) return o;
+            }
+            return null;
         }
 
         static float Ramp(int p, bool atStart, bool atEnd)

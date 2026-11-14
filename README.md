@@ -183,9 +183,15 @@ into coloured mush. It happens at both ends:
 Both are cured by changing the tile's level before the model sees it and putting it back after. A dark tile is
 lifted to a comfortable level; a tile whose answer still comes back beyond anything a picture can hold is shown
 again at half the level, up to three times, until the model settles. Scaling never clips, so it is undone
-exactly, and a tile the model handles first time -- nearly all of them in a normal photo -- costs nothing. A tile
-the model never settles on is kept exactly as it arrived, so the worst case is an area left undenoised rather
-than ruined.
+exactly, and a tile the model handles first time -- nearly all of them in a normal photo -- costs nothing.
+
+A graphics card short of memory does not refuse the work either: it answers, and the answer is nonsense. Another
+program using the card, or one of the bigger models loaded beside this one, is enough. Every tile was then kept
+as it arrived and the photo came back untouched with nothing said. So a tile the card gives up on is shown to the
+same model on the processor, and once the processor settles where the card did not, the rest of the photo goes
+straight to it: about eight times slower a tile, but it answers, and the status line says the noise is being
+removed on the processor. Only then, if the processor gives up too, is a tile kept exactly as it arrived, so the
+worst case is an area left undenoised rather than ruined.
 
 How much grain is actually removed, measured by adding a known amount to a clean photo and comparing with it:
 

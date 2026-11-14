@@ -90,4 +90,34 @@ St 'noisy' {
     Expect ($after -lt $loose) ("and the model left to itself makes it worse, not better: {0:N1} levels" -f $loose)
     Expect ((Pinned $o) -lt 0.01) ("the result keeps its tones: {0:P2} pinned at black or white" -f (Pinned $o))
 }
-Start-StRun -Log 'denoise.log' -Finish { [PixTune.Denoiser]::Comfort = 0.9; [PixTune.Denoiser]::Retries = 3; [PixTune.Denoiser]::Sane = 1.15 }
+# A card short of memory does not refuse the work, it answers with nonsense, and every tile is then kept as it
+# came in: the photo used to come back untouched with nothing said. Now the processor runs the model instead.
+St 'the card gives up' {
+    if (-not [PixTune.Denoiser]::Installed) { $script:Trace.Add('ok   the denoise model is not installed: skipped'); return }
+    if ([PixTune.Denoiser]::Device -eq 'CPU') { $script:Trace.Add('ok   the model is already on the processor: nothing to fall back from'); return }
+    $p = $App.Doc.Preview
+    $clean = $p.Region(0, 0, [Math]::Min(256, $p.W), [Math]::Min(256, $p.H))
+    $noisy = Grainy $clean 25
+    $before = Rms $clean $noisy
+    Guard $true
+    # without the fallback a tile the card gives up on is kept as it came in, which is what used to happen
+    [PixTune.Denoiser]::SkipCard = $true; [PixTune.Denoiser]::CpuFallback = $false; [PixTune.Denoiser]::Forget()
+    $old = [PixTune.Denoiser]::Denoise($noisy)
+    Expect ([PixTune.Denoiser]::Refused -gt 0 -and (Rms $clean $old) -gt $before * 0.9) `
+        ("left to the card alone the photo comes back as it went in (every tile kept as it came in: {0}, {1:N1} levels of grain)" -f [PixTune.Denoiser]::Refused, (Rms $clean $old))
+    # with it, the same tiles go through the model on the processor
+    [PixTune.Denoiser]::CpuFallback = $true; [PixTune.Denoiser]::Forget()
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $o = [PixTune.Denoiser]::Denoise($noisy)
+    $ms = $sw.ElapsedMilliseconds
+    [PixTune.Denoiser]::SkipCard = $false; [PixTune.Denoiser]::Forget()
+    if ($null -eq $o) { Expect $false "the processor returned a picture ($([PixTune.Denoiser]::LastError))"; return }
+    Expect ([PixTune.Denoiser]::OnCpu -gt 0 -and [PixTune.Denoiser]::Refused -eq 0) `
+        ("the processor takes the tiles the card gave up on ({0} of them, {1} refused, {2} ms)" -f [PixTune.Denoiser]::OnCpu, [PixTune.Denoiser]::Refused, $ms)
+    $after = Rms $clean $o
+    Expect ($after -lt $before * 0.75) ("and the grain is removed all the same: {0:N1} -> {1:N1} levels from the clean photo" -f $before, $after)
+}
+Start-StRun -Log 'denoise.log' -Finish {
+    [PixTune.Denoiser]::Comfort = 0.9; [PixTune.Denoiser]::Retries = 3; [PixTune.Denoiser]::Sane = 1.15
+    [PixTune.Denoiser]::SkipCard = $false; [PixTune.Denoiser]::CpuFallback = $true
+}
