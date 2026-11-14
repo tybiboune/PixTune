@@ -66,7 +66,7 @@ Tested on Sony A1 II, A6400, A7 V and Nikon D5300, Z50 II, Z6III (lossless, HE, 
 | Healing: content-aware fill (multi-scale PatchMatch completion) or optional AI mode (LaMa) for spots and objects | Portrait (face spotlight, skin smoothing, eye clarity, skin tones, presets) |
 | RAW Develop (with AI denoise) | Head Pose (rotation, pupil size, smile, focal length) |
 | | Face Enhance (eye focus, spotlight, smooth skin brushes) |
-| | Lens Blur (elliptical/linear, 7 bokeh shapes, transition, vignette) |
+| | Lens Blur (elliptical/linear/depth, 7 bokeh shapes, depth range, transition, bokeh threshold, vignette) |
 | | Vignette, Double Exposure (8 blend modes), Text (24 styles, 15 colours, invert), Frames (23) |
 | Color (hue, saturation, luminance per colour range) | Film (31 film stocks: Portra, Gold, E200, Superia, Pro 400H, Optima, Scala, Polaroid 600/SX-70, Technicolor, HP5...) |
 | Dehaze (remove or add haze) | Bloom, Halation, Grain |
@@ -242,6 +242,53 @@ anything, so that is the only order available, and the waiting is done at the ot
 is told which process asked for it and loads nothing until that process is gone. So the updated PixTune replaces
 the one on screen instead of standing beside it, and the old one cannot write its settings over the new one's.
 If the old one will not close, the new one starts anyway after a minute rather than leaving you with nothing.
+
+Closing it is less obvious than it sounds. Settings, where the update is usually asked for, is a window shown
+over the main one with a message loop of its own, and while it is up, Close on the main window does nothing at
+all: it returns, and the window stays. That is how an update used to leave the old PixTune running beside the
+new one. So the windows standing over the main one are shut first, and the main one is asked to close once
+their loops have unwound; if something still holds it four seconds later, the program goes anyway, since two
+PixTunes running is worse than a temporary file left behind. Measured with Settings open: the window closes
+0.4 s after the update asks it to, against still being there ten seconds later the old way.
+
+## Lens Blur that follows the photo's own depth
+
+Besides the elliptical and linear shapes drawn on the picture, Lens Blur has a depth mode: it works out how far
+away everything in the photo is and blurs by that, so a background goes soft while hair stays sharp to the
+strand. Drag the point onto whatever should be sharp and the photo's depth decides the rest; **Depth range**
+says how deep a slice stays sharp around it, **Transition** how quickly the blur comes on past that slice.
+What is nearer than the focus leaves it faster than what is further, as a lens does.
+
+The depth comes from Depth Anything V2 Small (Apache-2.0), a 47 MB download offered the first time the mode is
+used. The small one is a choice, not a compromise. Depth Anything 3 Small was tried beside it on the same
+photos: on a close portrait it hands back the subject as a near-flat white cut-out against a blotchy
+background, which is a segmentation rather than a depth field, and it turns hair into a hard silhouette -- the
+look of a bad phone portrait mode. V2 keeps the strands, and keeps a real gradient from hand to face to
+shoulder, which is what a lens actually does. It is also half the download and quicker. What mattered more
+than the model's size was the input size: the same model at 1036 pixels across holds hair it loses at 518, and
+1540 holds a little more again, so the longest side is set from what the graphics card can hold rather than
+left at the 518 it was trained at. 2044 ran the card out of memory.
+
+The map is worked out once per photo and kept, and so is the blurred copy, which depends on the blur strength
+and the lens shape but not on where the focus is. So the first use costs a few seconds and everything after
+that is the mixing pass alone: dragging the focus across a photo runs at about 15 ms a frame, measured on a
+750 x 1000 preview. `tests\DepthTest.ps1` checks that the map separates near from far, that focusing on the
+nearest thing in the photo leaves it untouched while focusing elsewhere blurs it, and the same the other way
+round, and that dragging stays under 150 ms a frame.
+
+## The lens shape in the highlights
+
+The bokeh shapes are not decoration: the kernel really is the shape, so a bright point out of focus comes back
+as a heart or a ring. Three things were wrong with that. The taps are gathered -- each pixel reads its
+neighbours -- which lays the shape down turned through half a turn: a circle or a hexagon never showed it, but
+a heart came out upside down and a triangle pointed the wrong way. The heart ran from its cusp at -1 to the top
+of its lobes at about 1.25, so fitted as though it were symmetric its lobes fell outside the kernel and came
+back with their tops cut off square. And the kernel was always eight pixels of radius, which is plenty for a
+circle and a staircase for a heart, stretched up to whatever the blur is; it now grows with the blur, up to 24,
+which the run-by-run gather makes nearly free (26 ms against 20 at preview size).
+
+**Bokeh threshold** says how bright a pixel has to be to count as a highlight: low and much of the photo turns
+into lens shapes, high and only true speculars do, which is where the shape reads best.
 
 ## Saturation and vibrance
 

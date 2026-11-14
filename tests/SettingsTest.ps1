@@ -33,10 +33,26 @@ St 'the settings window' {
             }
             Expect ($hits.Count -eq 0) ("no control is drawn over another ({0} found{1})" -f $hits.Count, $(if ($hits.Count) { ': ' + ($hits -join '; ') } else { '' }))
             $script:Trace.Add(("window {0} x {1}, {2} controls" -f $cs.Width, $cs.Height, $cl.Count))
-            $f.Close()
+            # An update is usually asked for from here, and then closes PixTune so the new one can take its
+            # place. This window stands over the main one with a message loop of its own, and while it is up the
+            # main window's Close does nothing at all, which left the old PixTune running beside the new one. So
+            # the restart shuts the windows over the main one first: that is what this checks.
+            # This window only leaves the list once its own loop has unwound, which cannot happen while this is
+            # running inside that loop: what can be seen is whether it comes back on its own afterwards. A
+            # second timer shuts it if it does not, so a failure here is a failure and not a hung test.
+            $m = $App.GetType().GetMethod('CloseWindowsOver', [Reflection.BindingFlags]'Instance,NonPublic')
+            $m.Invoke($App, @())
+            $b = New-Object System.Windows.Forms.Timer
+            $b.Interval = 3000
+            $b.add_Tick({ $script:Stuck = $true; foreach ($g in @([System.Windows.Forms.Application]::OpenForms)) { if ($g.Text -eq 'Settings') { $g.Close() } } })
+            $script:Backup = $b
+            $b.Start()
         }
     })
     $t.Start()
+    $script:Stuck = $false
     $App.ShowSettingsDialog()
+    if ($script:Backup) { $script:Backup.Stop() }
+    Expect (-not $script:Stuck) "a restart shuts the windows standing over the main one, so the main one can close"
 }
 Start-StRun -Log 'settings.log'

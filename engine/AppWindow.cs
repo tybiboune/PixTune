@@ -62,6 +62,7 @@ namespace PixTune
             Segmenter.RuntimePath = Lama.RuntimePath; Segmenter.Dir = Path.Combine(Lama.Dir, "masks");
             Denoiser.RuntimePath = Lama.RuntimePath; Denoiser.Dir = Path.Combine(Lama.Dir, "denoise");
             SubjectPicker.RuntimePath = Lama.RuntimePath; SubjectPicker.Dir = Path.Combine(Lama.Dir, "pick");
+            Depther.RuntimePath = Lama.RuntimePath; Depther.Dir = Path.Combine(Lama.Dir, "depth");
             GpuCheck.Root = Lama.Dir;
             GpuCheck.Load(Settings.GpuModels);
             GpuCheck.LoadSpeed(Settings.GpuSpeed);
@@ -520,6 +521,8 @@ namespace PixTune
             string seg = Segmenter.Working;
             if (LivePortrait.Working) seg = "Redrawing the face";
             if (!string.IsNullOrEmpty(SubjectPicker.Working)) seg = SubjectPicker.Working;
+            // the depth of a photo is worked out once and then kept, so this shows on the first use only
+            if (!string.IsNullOrEmpty(Depther.Working)) seg = Depther.Working;
             string msg = null;
             if (!string.IsNullOrEmpty(seg) && Canvas.Busy) msg = seg + "...";
             if (Canvas.Busy && p > 0) msg = string.Format("{0}... {1}%", what, (int)(100 * p));
@@ -804,7 +807,31 @@ namespace PixTune
                 });
             }
             catch (Exception ex) { SetStatus("Could not start again: " + ex.Message); return; }
-            Form.Close();
+            ShutForRestart();
+        }
+
+        // Settings, which is where the update is usually asked for, is a window shown over the main one with a
+        // message loop of its own. While it is up, Close on the main window does nothing at all - it returns,
+        // and the window stays - which is how an update left the old PixTune on screen beside the new one. So
+        // the windows over it are shut first, and the main one is asked to close once their loops have unwound.
+        void ShutForRestart()
+        {
+            CloseWindowsOver();
+            Form.BeginInvoke((MethodInvoker)delegate { try { Form.Close(); } catch (Exception) { } });
+            // and if something still holds the window after that, this copy goes anyway: it has been replaced,
+            // and leaving two PixTunes running is worse than leaving a temporary file behind
+            Timer go = new Timer();
+            go.Interval = 4000;
+            go.Tick += (s, e) => { go.Stop(); go.Dispose(); Environment.Exit(0); };
+            go.Start();
+        }
+
+        // the windows standing over the main one, newest first
+        void CloseWindowsOver()
+        {
+            List<Form> others = new List<Form>();
+            foreach (Form f in Application.OpenForms) if (f != Form) others.Add(f);
+            for (int i = others.Count - 1; i >= 0; i--) try { others[i].Close(); } catch (Exception) { }
         }
 
         // At launch, once the window has been idle for two seconds: installed AI models not checked yet on this

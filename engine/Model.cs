@@ -192,6 +192,10 @@ namespace PixTune
         {
             if (!regionTools.Contains(s.Tool)) return false;
             if (s.Tool == "tune" && s.I("auto", 0) == 1) return false;
+            // Lens Blur's depth mode reads a depth that is relative to the whole photo: measured on a part, the
+            // nearest thing in that part would become the nearest thing there is, and the focus would mean
+            // something different at every zoom
+            if (s.Tool == "lensblur" && s.I("shape", 0) == 2) return false;
             return true;
         }
 
@@ -982,6 +986,7 @@ namespace PixTune
         public static void Clear()
         {
             SmartMask.Forget(); SubjectPicker.Forget(); Segmenter.Forget(); Denoiser.Forget(); Raster.Forget(); Pipeline.ForgetMaskBases(); Memo.Forget(); Pool.Forget(); Ops.ForgetPowTables();
+            Depther.Forget(); Adjust.ForgetBlurs();
             FaceMesh.Forget(); LivePortrait.Forget(); Geo.Forget(); Style.Forget(); Diffusion.Forget();
         }
 

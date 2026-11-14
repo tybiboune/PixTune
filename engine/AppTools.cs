@@ -18,7 +18,7 @@ namespace PixTune
         public CurveEditor CurveEditor;
         public double CropAspect;
         public bool CropPortrait;
-        public TileGroup ExpandTiles, HealTiles, PoseTiles;
+        public TileGroup ExpandTiles, HealTiles, PoseTiles, ShapeTiles;
         public int ExpandWant;
         public List<Control> ExpandGen;
         public TextBox TextBox;
@@ -386,6 +386,9 @@ namespace PixTune
             ImageCanvas c = Canvas; Step s = Step;
             c.Center = new PointF(s.F("cx", 0.5), s.F("cy", 0.5));
             c.RadX = s.F("rx", 0.25); c.RadY = s.F("ry", 0.25); c.Angle = s.F("angle"); c.EllipseShape = s.I("shape", 0);
+            // depth mode has no shape to size or turn: the point alone says what to focus on, and the photo's
+            // own depth decides the rest
+            if (ToolDef != null && ToolDef.Id == "lensblur") c.ShowEllipse = s.I("shape", 0) != 2;
             c.Invalidate();
         }
 
@@ -875,16 +878,35 @@ namespace PixTune
             Register(new ToolDef
             {
                 Id = "lensblur", Name = "Lens Blur", Glyph = G(0xE890), Canvas = "Center", Ellipse = true,
-                Params = new List<Prm> { P("strength", "Blur strength", 0, 100, 50), P("transition", "Transition", 0, 100, 30), P("vignette", "Vignette strength", 0, 100, 30) },
+                // Depth range is depth mode's own: how deep a slice of the scene stays sharp around whatever the
+                // focus point sits on. Transition then says how quickly the blur comes on beyond that slice, as
+                // it says how soft the edge is for the drawn shapes.
+                Params = new List<Prm> { P("strength", "Blur strength", 0, 100, 50), P("depthrange", "Depth range", 0, 100, 30),
+                    P("transition", "Transition", 0, 100, 30), P("bokehthreshold", "Bokeh threshold", 0, 100, 40),
+                    P("vignette", "Vignette strength", 0, 100, 30) },
                 Setup = () =>
                 {
-                    AddTiles(new List<TileSpec> { T("Elliptical", G(0xEA3A)), T("Linear", G(0xE738)) }, Step.I("shape", 0), 100, 56, (i, t) => { Step.Set("shape", i); SyncEllipse(); RequestRender(); });
+                    ShapeTiles = AddTiles(new List<TileSpec> { T("Elliptical", G(0xEA3A)), T("Linear", G(0xE738)), T("Depth", G(0xE809)) },
+                        Step.I("shape", 0), 100, 56, (i, t) =>
+                        {
+                            Step.Set("shape", i);
+                            // depth needs the model: offered once, and the tool falls back to Elliptical if declined
+                            if (i == 2 && !Depther.Installed)
+                            {
+                                StartAiDownload("depth", ok2 => { if (!ok2 && ToolDef != null && ToolDef.Id == "lensblur") { Step.Set("shape", 0); SelectTileIn(ShapeTiles, 0); } SyncEllipse(); RequestRender(); });
+                                return;
+                            }
+                            if (i == 2) Depther.WarmUp();
+                            SyncEllipse(); RequestRender();
+                        });
                     AddSection("Bokeh");
                     string[] names = { "Circle", "Hexagon", "Octagon", "Triangle", "Star", "Heart", "Ring" };
                     List<TileSpec> items = new List<TileSpec>();
                     for (int i = 0; i < names.Length; i++) items.Add(T(names[i], "", null, NewShapeThumb(i)));
                     AddTiles(items, Step.I("bokeh", 0), 62, 66, (i, t) => { Step.Set("bokeh", i); RequestRender(); });
-                    AddHint("Drag the centre to move the focus, the white handles to resize and rotate it.");
+                    AddHint(Step.I("shape", 0) == 2
+                        ? "Drag the point onto whatever should be sharp: the photo's own depth decides the rest. Depth range sets how deep a slice stays sharp."
+                        : "Drag the centre to move the focus, the white handles to resize and rotate it.");
                     SyncEllipse();
                 },
                 OnEllipse = () =>

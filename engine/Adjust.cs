@@ -801,18 +801,26 @@ namespace PixTune
                     }
                 case 5:                                                                                   // heart
                     {
-                        float hx = x * 1.15f, hy = -y * 1.15f + 0.25f;
+                        // The curve runs from the cusp at -1 to the top of the lobes at about 1.25, so it is
+                        // fitted to that and not to a circle: scaled as if it were symmetric, the lobes fall
+                        // outside the kernel and come back with their tops cut off square.
+                        float hx = x * 1.15f, hy = -y * 1.12f + 0.12f;
                         float q = hx * hx + hy * hy - 1;
                         return q * q * q - hx * hx * hy * hy * hy <= 0;
                     }
-                case 6: { float r2 = x * x + y * y; return r2 <= 1 && r2 >= 0.42f; }                      // ring (mirror lens)
+                // a mirror lens draws a thin bright ring, not a thick doughnut: the hole is most of it
+                case 6: { float r2 = x * x + y * y; return r2 <= 1 && r2 >= 0.72f; }                      // ring (mirror lens)
                 default: return x * x + y * y <= 1;                                                       // circle
             }
         }
 
+        // How far out of focus each pixel is, 0 sharp to 1 fully blurred. Elliptical and linear draw a shape on
+        // the picture; depth asks how far away each pixel really is and compares that with whatever the focus
+        // point is sitting on, so the blur follows the scene instead of a drawn shape.
         public static float[] FocusMask(Img src, Step s)
         {
             int shape = s.I("shape", 0);
+            if (shape == 2) return DepthMask(src, s);
             float cx = src.PX(s.F("cx", 0.5)), cy = src.PY(s.F("cy", 0.5));
             float rx = Math.Max(2, s.F("rx", 0.25) * src.MinDim), ry = Math.Max(2, s.F("ry", 0.25) * src.MinDim);
             float ang = s.F("angle") * (float)Math.PI / 180f;
@@ -833,8 +841,90 @@ namespace PixTune
             return m;
         }
 
+        // Depth mode. The depth map is worked out once per photo and kept; everything here is arithmetic on it,
+        // so dragging the focus point across the photo costs one pass over the pixels and nothing else.
+        // In front of the focus and behind it are separate: a lens blurs both, but what is nearer blurs faster,
+        // which is what keeps a portrait's background soft while the hands stay nearly sharp.
+        static float[] DepthMask(Img src, Step s)
+        {
+            int mw, mh;
+            // always the whole picture: depth is relative, so a part of the photo measured on its own would put
+            // its own nearest thing at 1 and the focus would mean something different at every zoom. Pipeline
+            // keeps depth mode off the region path for that reason.
+            float[] map = Depther.Map(src, out mw, out mh);
+            float[] m = Pool.Rent(src.N);
+            if (map == null)
+            {
+                // no model: everything sharp rather than a blur that means nothing
+                return m;
+            }
+            // the focus point picks a depth off the map, so the user points at a face rather than at a number
+            float focus = Depther.At(map, mw, mh, s.F("cx", 0.5), s.F("cy", 0.5));
+            float dof = 0.02f + s.F("depthrange", 30) / 100f * 0.45f;      // how deep a slice stays sharp
+            float ramp = 1.25f + s.F("transition", 30) / 100f * 2.6f;      // how quickly the blur comes on past it
+            float far = 1.1f, near = 1.7f;                                 // nearer things leave focus faster
+            int w = src.W, h = src.H;
+            float sx = (mw - 1) / (float)Math.Max(1, w - 1), sy = (mh - 1) / (float)Math.Max(1, h - 1);
+            Ops.For(0, h, y =>
+            {
+                float my = y * sy;
+                int y0 = (int)my; if (y0 > mh - 1) y0 = mh - 1;
+                int y1 = Math.Min(mh - 1, y0 + 1);
+                float ay = my - y0;
+                for (int x = 0; x < w; x++)
+                {
+                    float mx = x * sx;
+                    int x0 = (int)mx; if (x0 > mw - 1) x0 = mw - 1;
+                    int x1 = Math.Min(mw - 1, x0 + 1);
+                    float ax = mx - x0;
+                    float d = (map[y0 * mw + x0] * (1 - ax) + map[y0 * mw + x1] * ax) * (1 - ay)
+                            + (map[y1 * mw + x0] * (1 - ax) + map[y1 * mw + x1] * ax) * ay;
+                    float off = d - focus;
+                    float t = off >= 0 ? off / (dof * near) : -off / (dof * far);
+                    m[y * w + x] = Ops.SmoothStep(1f, ramp, t);
+                }
+            });
+            return m;
+        }
+
         // false gathers every tap of the shape on its own (slower, and the yardstick for the run-by-run way)
         public static bool GatherRuns = true;
+
+        // The blurred copy depends on the blur strength and the lens shape, and on nothing else: where the focus
+        // sits only decides how much of it each pixel takes. So it is kept, and dragging the focus point across
+        // the photo costs the mixing pass alone instead of gathering the whole shape again. Preview-sized
+        // pictures only: a full-resolution copy is 12 bytes a pixel, and full renders are one-offs anyway.
+        // (false does the work every time, which is the yardstick this was measured against.)
+        public static bool KeepBlur = true;
+        class Blurred { public float[] Print; public int W, H; public float Strength; public int Bokeh; public Img B; }
+        static readonly List<Blurred> blurs = new List<Blurred>();
+        public static void ForgetBlurs() { lock (blurs) blurs.Clear(); }
+        static float[] BlurPrint(Img im)
+        {
+            float[] p = new float[48];
+            int[] cnt = new int[16];
+            for (int y = 0; y < im.H; y++)
+                for (int x = 0; x < im.W; x++)
+                {
+                    int cell = (y * 4 / im.H) * 4 + x * 4 / im.W, i = (y * im.W + x) * 3;
+                    cnt[cell]++;
+                    for (int c = 0; c < 3; c++) p[cell * 3 + c] += im.D[i + c];
+                }
+            for (int i = 0; i < p.Length; i++) p[i] /= Math.Max(1, cnt[i / 3]);
+            return p;
+        }
+        static Img KeptBlur(Img src, float strength, int bokeh, float[] print)
+        {
+            lock (blurs)
+                foreach (Blurred b in blurs)
+                {
+                    if (b.W != src.W || b.H != src.H || b.Bokeh != bokeh || Math.Abs(b.Strength - strength) > 1e-4f) continue;
+                    bool same = true;
+                    for (int i = 0; i < print.Length && same; i++) if (Math.Abs(b.Print[i] - print[i]) > 0.004f) same = false;
+                    if (same) return b.B;
+                }
+            return null;
+        }
 
         public static Img LensBlur(Img src, Step s)
         {
@@ -844,14 +934,28 @@ namespace PixTune
             float[] m = FocusMask(src, s);
             float maxR = strength * 0.02f * src.Diagonal;
             Img blurred = src;
+            // the blurred copy from last time, when nothing it depends on has changed
+            bool keep = KeepBlur && (long)src.W * src.H <= 6000000;
+            float[] bprint = keep ? BlurPrint(src) : null;
+            Img had = keep ? KeptBlur(src, strength, bokeh, bprint) : null;
+            if (had != null) { blurred = had; maxR = 0; }
             if (maxR >= 1f)
             {
-                float f = Math.Max(1f, maxR / 8f);
+                // How many pixels across the lens shape itself is drawn. The blur runs on a shrunk copy so the
+                // kernel stays small, and eight pixels of radius was enough while every shape was a circle or a
+                // hexagon: a heart or a star at seventeen pixels across is a staircase, stretched up to whatever
+                // the blur is. A wider blur gets a bigger kernel, where there is something to see; the work goes
+                // up with it, which is why it is capped and why the blurred copy is kept between frames.
+                float detail = Math.Min(24f, Math.Max(14f, maxR / 2.5f));
+                float f = Math.Max(1f, maxR / detail);
                 int sw = Math.Max(1, (int)(src.W / f)), sh = Math.Max(1, (int)(src.H / f));
                 Img small = f > 1 ? Ops.Resize(src, sw, sh) : src.Clone();
                 float kr = maxR / f;
-                // Emphasise highlights so they bloom into bokeh discs. With a small blur this picture is the
+                // Emphasise highlights so they bloom into bokeh shapes. With a small blur this picture is the
                 // whole photo, so the pass runs on every core and reads its power from a table.
+                // Threshold says how bright a pixel has to be to count as a highlight: low and much of the photo
+                // turns into lens shapes, high and only true speculars do, which is where the shape reads best.
+                float thr = 0.95f - s.F("bokehthreshold", 40) / 100f * 0.55f;
                 float[] SD = small.D;
                 float[] up = Ops.PowTable(2.2f);
                 Ops.For(0, sh, y =>
@@ -859,15 +963,18 @@ namespace PixTune
                     for (int j = y * sw * 3, e = j + sw * 3; j < e; j += 3)
                     {
                         float l = Ops.Lum(SD[j], SD[j + 1], SD[j + 2]);
-                        float boost = 1 + 5 * Ops.SmoothStep(0.72f, 1f, l);
+                        float boost = 1 + 5 * Ops.SmoothStep(thr, Math.Min(1f, thr + 0.28f), l);
                         for (int c = 0; c < 3; c++) SD[j + c] = Ops.PowAt(up, SD[j + c], 2.2f) * boost;
                     }
                 });
+                // The taps are gathered - each pixel reads its neighbours - which lays the shape down turned
+                // through half a turn, so the offsets are negated. A circle or a hexagon never showed it; a
+                // heart came out upside down and a triangle pointed the wrong way.
                 List<int> ox = new List<int>(), oy = new List<int>();
                 int ik = (int)Math.Ceiling(kr);
                 for (int dy = -ik; dy <= ik; dy++)
                     for (int dx = -ik; dx <= ik; dx++)
-                        if (InShape(bokeh, dx / kr, dy / kr)) { ox.Add(dx); oy.Add(dy); }
+                        if (InShape(bokeh, -dx / kr, -dy / kr)) { ox.Add(dx); oy.Add(dy); }
                 if (ox.Count == 0) { ox.Add(0); oy.Add(0); }
                 int[] OX = ox.ToArray(), OY = oy.ToArray();
                 // The same taps as runs of neighbouring pixels, one row of the shape at a time (every shape here
@@ -880,7 +987,7 @@ namespace PixTune
                     int start = int.MinValue;
                     for (int dx = -ik; dx <= ik + 1; dx++)
                     {
-                        bool inside = dx <= ik && InShape(bokeh, dx / kr, dy / kr);
+                        bool inside = dx <= ik && InShape(bokeh, -dx / kr, -dy / kr);
                         if (inside) { if (start == int.MinValue) start = dx; }
                         else if (start != int.MinValue) { rn.Add(dy); rn.Add(start); rn.Add(dx - 1); taps += dx - start; start = int.MinValue; }
                     }
@@ -955,6 +1062,17 @@ namespace PixTune
                 }
                 if (f > 1) { blurred = Ops.Resize(bs, src.W, src.H); bs.Recycle(); } else blurred = bs;
                 small.Recycle();
+                if (keep)
+                {
+                    // held for the next frame: Stable keeps the pool's hands off it
+                    blurred.Stable = true;
+                    lock (blurs)
+                    {
+                        blurs.Add(new Blurred { Print = bprint, W = src.W, H = src.H, Strength = strength, Bokeh = bokeh, B = blurred });
+                        while (blurs.Count > 2) blurs.RemoveAt(0);
+                    }
+                    had = blurred;
+                }
             }
             Img outImg = src.Clone();
             float[] D = outImg.D, BB = blurred.D;
@@ -971,7 +1089,7 @@ namespace PixTune
                 }
             });
             Ops.Done(m);
-            if (blurred != src) blurred.Recycle();
+            if (blurred != src && blurred != had) blurred.Recycle();
             return outImg;
         }
     }

@@ -66,6 +66,13 @@ namespace PixTune
                     new[] { "mobilesam-onnx-float/encoder.data", "pick\\encoder.data", "57C0F73C068F8C1F6845AB2965E4BDD8458C313B45F85FCCA76B29F0E4644C95" },
                     new[] { "mobilesam-onnx-float/decoder.onnx", "pick\\decoder.onnx", "140021AAADC4BD2512BC84D9DDE5E3438F3387F5B999974A545A368CC296ECA4" },
                     new[] { "mobilesam-onnx-float/decoder.data", "pick\\decoder.data", "A19306330820B9F05398ECDCE0EADDEED4777A12E3C5FDE67F8728CB450CDF2C" }) } },
+            // Lens Blur's depth mode: Depth Anything V2 Small (Apache-2.0, onnx-community export pinned to one
+            // revision). The small one on purpose, not for its size: the bigger families hand back the subject
+            // as a near-flat cut-out, which turns hair into a hard silhouette, where this one keeps the strands
+            // and a real gradient through the picture. engine\Depth.cs says what was compared.
+            { "depth", new[] {
+                File1("https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/onnx/model_fp16.onnx",
+                    "depth\\depth_anything_v2_small_fp16.onnx", "2DF6223F206B5164E21F664ACE61DABEB9BB6A49B8B5A3E00510B4807D0F5B04", 49642442, "depth model") } },
             // Head Pose AI mode: LivePortrait (MIT, ONNX export from warmshao/FasterLivePortrait pinned to one revision)
             { "headpose", new[] {
                 File1(LpBase + "appearance_feature_extractor.onnx", "liveportrait\\appearance_feature_extractor.onnx", "D070AFCCCA7F528FFB0EF5052B21588B42225A996661833F7BDEDE562D1AB921", 3355896, "face model (1/4)"),

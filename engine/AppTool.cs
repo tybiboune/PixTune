@@ -306,6 +306,9 @@ namespace PixTune
             { "headpose", new AiPack { Title = "AI head pose", Installed = () => LivePortrait.Installed,
                 Lines = new[] { "LivePortrait (MIT licence), ONNX version from huggingface.co" },
                 Note = "Each change of turn, tilt or smile then takes about 5 to 15 seconds." } },
+            { "depth", new AiPack { Title = "Depth for Lens Blur", Installed = () => Depther.Installed,
+                Lines = new[] { "Depth Anything V2 Small (Apache 2.0 licence), ONNX version from huggingface.co" },
+                Note = "It works out how far away everything in the photo is, once, so the blur can follow the real depth. After that, moving the focus is instant." } },
         };
         public AiSetup AiSetupRunning;
         public bool MasksAsked;
@@ -337,7 +340,7 @@ namespace PixTune
                     return;
                 }
                 AiSetupRunning = null;
-                Lama.Reset(); Diffusion.Reset(); Upscaler.Reset(); Segmenter.Reset(); Denoiser.Reset(); LivePortrait.Reset(); SubjectPicker.Reset(); SmartMask.Forget();
+                Lama.Reset(); Diffusion.Reset(); Upscaler.Reset(); Segmenter.Reset(); Denoiser.Reset(); LivePortrait.Reset(); SubjectPicker.Reset(); Depther.Reset(); SmartMask.Forget();
                 bool ok = string.IsNullOrEmpty(e.Error) && p.Installed();
                 SetStatus(ok ? "AI files installed" : "AI download failed: " + e.Error);
                 if (done != null) done(ok);
