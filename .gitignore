@@ -1,0 +1,13 @@
+# the shareable archive is built from this folder, not kept in it
+PixTune.zip
+*.zip
+
+# what the program writes while it runs
+cache/
+*.log
+*.log.times
+
+# test output folders
+tests/out/
+tests/results/
+PixTune-tests/

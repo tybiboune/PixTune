@@ -1,0 +1,10 @@
+# Keep line endings as they are in the working copy: the engine and the scripts are stored and checked out
+# with LF, whatever the machine's git is set to. A checkout that turned them into CRLF would change every file.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.dll binary
+*.onnx binary
+*.data binary
+*.zip binary
