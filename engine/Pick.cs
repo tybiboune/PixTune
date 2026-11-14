@@ -57,7 +57,7 @@ namespace PixTune
         // ---------------- image embedding (once per picture) ----------------
         class Emb { public Img Im; public float[] E; public Img Work; }
         static readonly List<Emb> embs = new List<Emb>();
-        public static void Forget() { lock (embs) embs.Clear(); lock (kept) kept.Clear(); }
+        public static void Forget() { lock (embs) embs.Clear(); lock (kept) { kept.Clear(); big = null; bigFrom = null; } }
 
         static Emb Embed(Img im)
         {
@@ -83,32 +83,60 @@ namespace PixTune
         }
 
         // ---------------- masks ----------------
-        class Kept { public Img Im; public string Pts; public float[] M; }
+        class Kept { public Img Im; public string Pts; public float[] M; public int W, H; }
         static readonly List<Kept> kept = new List<Kept>();
+        // The last full-size copy of a mask. The model works at 1024 on its longest side, so a mask for the whole
+        // photo used to be stretched to the photo's size and four of them kept: at 24 megapixels that is 96 MB
+        // each, 380 MB held for masks that a part of the photo samples from anyway. One is enough.
+        static float[] bigFrom, big; static int bigW, bigH;
+
+        static Kept Find(Img im, string pts)
+        {
+            lock (kept) foreach (Kept k in kept) if (k.Im == im && k.Pts == pts) return k;
+            return null;
+        }
+
+        // The mask at the size the model works at, with that size, for a caller that is going to sample or scale
+        // it anyway: a part of the photo at 100% takes what it needs straight from this.
+        public static float[] MaskSmall(Img im, string pts, out int mw, out int mh)
+        {
+            mw = im.W; mh = im.H;
+            List<float[]> clicks = ParsePoints(pts);
+            if (clicks.Count == 0 || !Available) return null;
+            Kept hit = Find(im, pts);
+            if (hit == null)
+                lock (runLk)
+                {
+                    // asked by the window and the renderer at once: the one that waited takes the other's result
+                    hit = Find(im, pts);
+                    if (hit == null)
+                    {
+                        try
+                        {
+                            Emb e = Embed(im);
+                            Pipeline.CheckCancel();
+                            hit = new Kept { Im = im, Pts = pts, M = Decode(e, clicks), W = e.Work.W, H = e.Work.H };
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex) { LastError = ex.Message; return null; }
+                        lock (kept) { kept.Add(hit); while (kept.Count > 4) kept.RemoveAt(0); }
+                    }
+                }
+            mw = hit.W; mh = hit.H;
+            return hit.M;
+        }
 
         // pts: "x,y;x,y" in 0..1 of the picture. Soft mask at the picture's size, or null when the model is not
         // available. Callers must not change the result.
         public static float[] Mask(Img im, string pts)
         {
-            List<float[]> clicks = ParsePoints(pts);
-            if (clicks.Count == 0 || !Available) return null;
-            lock (kept) foreach (Kept k in kept) if (k.Im == im && k.Pts == pts) return k.M;
-            float[] m;
-            lock (runLk)
-            {
-                // asked by the window and the renderer at once: the one that waited takes the other's result
-                lock (kept) foreach (Kept k in kept) if (k.Im == im && k.Pts == pts) return k.M;
-                try
-                {
-                    Emb e = Embed(im);
-                    Pipeline.CheckCancel();
-                    m = Decode(e, clicks);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { LastError = ex.Message; return null; }
-            }
-            lock (kept) { kept.Add(new Kept { Im = im, Pts = pts, M = m }); while (kept.Count > 4) kept.RemoveAt(0); }
-            return m;
+            int mw, mh;
+            float[] m = MaskSmall(im, pts, out mw, out mh);
+            if (m == null || (mw == im.W && mh == im.H)) return m;
+            lock (kept) if (big != null && bigFrom == m && bigW == im.W && bigH == im.H) return big;
+            float[] r = Ops.ResizePlane(m, mw, mh, im.W, im.H);
+            lock (kept) { bigFrom = m; big = r; bigW = im.W; bigH = im.H; }
+            return r;
         }
 
         // parts clicked to add are joined, then parts clicked to remove are cut out of them
@@ -137,11 +165,12 @@ namespace PixTune
                 }
             }
             for (int i = 0; i < union.Length; i++) union[i] *= 1 - cut[i];
-            // snapped to the real edges of the photo, then brought to the picture's size
+            // snapped to the real edges of the photo; it stays at the size the model works at, and whoever wants
+            // it at the photo's size says so
             float[] L = Ops.Luma(r);
             float[] m = Ops.Guided(L, union, w, h, Math.Max(2, Math.Min(w, h) / 200), 0.0006f);
             for (int i = 0; i < m.Length; i++) m[i] = Ops.SmoothStep(0.3f, 0.7f, m[i]);
-            return (w == e.Im.W && h == e.Im.H) ? m : Ops.ResizePlane(m, w, h, e.Im.W, e.Im.H);
+            return m;
         }
 
         // "x,y" adds the part under that point, "x,y,0" removes it; result: { x, y, 1 or 0 }

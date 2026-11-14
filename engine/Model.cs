@@ -375,11 +375,16 @@ namespace PixTune
             if (src.Framed || (MaskBase != null && (MaskBase.W != src.W || MaskBase.H != src.H)))
             {
                 // live view (a part of the photo, or the photo at screen size): subject, background, sky and picked
-                // parts are always found on the whole photo, then its part or size is taken from that mask
+                // parts are always found on the whole photo, then its part or size is taken from that mask. The
+                // mask is taken at the size its own model works at, since this samples it anyway: a picked mask
+                // for the whole photo at 24 megapixels is a 96 MB plane built and thrown away for every frame.
                 Img whole = MaskBase;
                 if (whole == null) throw new InvalidOperationException("a framed picture needs the whole photo for its masks");
-                float[] wm = KindMask(whole, kind, s);
-                return wm == null ? null : Ops.FramePart(wm, whole.W, whole.H, src);
+                int mw = whole.W, mh = whole.H;
+                float[] wm = kind == "pick" && SubjectPicker.Installed
+                    ? SubjectPicker.MaskSmall(whole, s.Str("pickpts", ""), out mw, out mh)
+                    : KindMask(whole, kind, s);
+                return wm == null ? null : Ops.FramePart(wm, mw, mh, src);
             }
             Img pic = MaskBase != null && MaskBase.W == src.W && MaskBase.H == src.H ? MaskBase : src;
             if (kind == "pick")
