@@ -272,17 +272,24 @@ width used to decide everything — a blur of a 10 MP plane at width 96:
 
 A strong graphics card runs the image tools many times faster than the processor, but a weak integrated one
 (Intel Iris or UHD, small AMD APUs, which also borrow the PC's RAM) can be slower. So once per card, in the
-background after start-up, PixTune times the same edits (Tune, Details, Film and the frame shown) both ways and
-the image tools use the faster one; Settings > GPU use shows the choice ("Tools: GPU (3.1x faster)" or "Tools:
-processor") and **Auto test GPU** measures again. With an integrated card, the memory PixTune keeps on it is
+background after start-up, PixTune times the same edits (Tune, Details, Film and the frame shown) on every card
+and on the processor, and the image tools use the quickest; Settings > GPU use shows the choice ("Tools: GPU
+(3.1x faster)" or "Tools: processor") and **Auto test GPU** measures again. With an integrated card, the memory PixTune keeps on it is
 counted against the PC's RAM (at most 1 GB on a 16 GB PC). `PIXTUNE_GPU=software` runs the shaders on Windows'
 software GPU, to try a slow card on any machine.
 
 **More than one graphics card.** Every card in the machine is found and listed in Settings > GPU use (hover the
-line), with the one in use marked; `PIXTUNE_GPU_ADAPTER=<number>` runs on a particular one, which is how each
-was timed below. Work is deliberately **not** spread across several cards, nor across the card and the
-processor at the same time, because both were measured and neither pays on a machine like this one (a laptop
-with Intel Iris Xe built in and an NVIDIA RTX A2000 beside it):
+line), with the one in use marked. **Auto test GPU** times the same three edits on *every* card as well as on
+the processor, keeps whichever is quickest here, and remembers it by name, so a later start goes straight to
+that card instead of to whichever has the most memory. On this laptop the whole test takes about two seconds
+and reports, for instance, `NVIDIA RTX A2000: 21 ms` against `Intel Iris Xe: 49 ms`. The choice survives a
+driver change or a new card, because the saved line records which cards were present when it was measured; add
+or remove one and the test runs again. `PIXTUNE_GPU_ADAPTER=<number>` still forces a particular card, which is
+how each was timed below.
+
+Work is deliberately **not** spread across several cards at once, nor across the card and the processor at the
+same time, because both were measured and neither pays on a machine like this one (a laptop with Intel Iris Xe
+built in and an NVIDIA RTX A2000 beside it):
 
 | On a 22 MP photo | Tune | Details | Drama |
 |---|---|---|---|
