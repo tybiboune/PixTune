@@ -65,6 +65,9 @@ namespace PixTune
             GpuCheck.Root = Lama.Dir;
             GpuCheck.Load(Settings.GpuModels);
             GpuCheck.LoadSpeed(Settings.GpuSpeed);
+            // which version this is, and a quiet look for a newer one once a day (it only asks, never installs)
+            Updater.ReadVersion(App.Root);
+            if (Settings.CheckUpdates) LookForUpdate(false);
             // results found by the check or by a model failing in use are kept in the settings
             GpuCheck.Changed += (s, e) => OnUi(() => { Settings.GpuModels = GpuCheck.Save(); Settings.GpuSpeed = GpuCheck.Speed; Settings.Save(); });
             Tools.Clear();
@@ -714,6 +717,79 @@ namespace PixTune
             BtnStack.Text = has && Doc.Steps.Count > 0 ? Doc.Steps.Count.ToString() : "";
             BtnStack.Width = BtnStack.Text.Length > 0 ? S(64) : S(44);
             foreach (IconButton b in TopButtons) b.Invalidate();
+        }
+
+        // Looks on GitHub for a newer PixTune. Quiet when it finds nothing, and never installs on its own:
+        // it offers, and the owner says yes. Asked for from Settings (loud = true) it always says what it found.
+        public void LookForUpdate(bool loud)
+        {
+            if (Updater.Checking || Updater.Installing) return;
+            if (!loud)
+            {
+                // once a day is enough, and a version already turned down is not offered again
+                DateTime last;
+                if (DateTime.TryParse(Settings.UpdateChecked, out last) && (DateTime.Now - last).TotalHours < 24) return;
+            }
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                bool found = Updater.Check();
+                OnUi(() =>
+                {
+                    Settings.UpdateChecked = DateTime.Now.ToString("o"); Settings.Save();
+                    if (!found)
+                    {
+                        if (!loud) return;
+                        SetStatus(Updater.LastError.Length > 0
+                            ? "Could not look for an update: " + Updater.LastError
+                            : "PixTune " + Updater.Current + " is the newest version.");
+                        return;
+                    }
+                    if (!loud && Settings.UpdateSkipped == Updater.Latest) return;
+                    OfferUpdate();
+                });
+            });
+        }
+
+        void OfferUpdate()
+        {
+            string notes = Updater.Notes.Length > 220 ? Updater.Notes.Substring(0, 220) + "..." : Updater.Notes;
+            string text = "PixTune " + Updater.Latest + " is available. This copy is " + Updater.Current + "."
+                + (notes.Length > 0 ? "\r\n\r\n" + notes : "")
+                + "\r\n\r\nInstall it now? PixTune will close and start again, and the version you have is kept"
+                + "\r\nso it can be put back.";
+            DialogResult r = MessageBox.Show(Form, text, "A newer PixTune", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (r != DialogResult.Yes) { Settings.UpdateSkipped = Updater.Latest; Settings.Save(); return; }
+            if (Doc != null && Doc.HasImage && Doc.Steps.Count > 0
+                && MessageBox.Show(Form, "The edits on this photo are not saved. Install anyway?", "A newer PixTune",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            SetStatus("Installing PixTune " + Updater.Latest + "...");
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                string backup = Updater.Install(App.Root);
+                OnUi(() =>
+                {
+                    if (backup == null) { SetStatus("The update could not be installed: " + Updater.LastError); return; }
+                    MessageBox.Show(Form, "PixTune " + Updater.Latest + " is in place. It will start again now.\r\n\r\n"
+                        + "The version you had is kept in:\r\n" + backup, "A newer PixTune",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    Restart();
+                });
+            });
+        }
+
+        void Restart()
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = Path.Combine(App.Root, "PixTune.bat"),
+                    WorkingDirectory = App.Root,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex) { SetStatus("Could not start again: " + ex.Message); return; }
+            Form.Close();
         }
 
         // At launch, once the window has been idle for two seconds: installed AI models not checked yet on this

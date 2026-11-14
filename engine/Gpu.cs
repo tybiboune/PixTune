@@ -12,6 +12,32 @@ namespace PixTune
     {
         public static bool Enabled = true;
         public static int MinPixels = 120000;     // smaller images are faster on the CPU
+        // The largest single plane the card is asked to hold. Direct3D guarantees a card of this level at least
+        // 128 MB per resource and allows far more when it has the memory, so 96 MB turned the card away from
+        // any photo over 25 megapixels and the tools fell back to the processor: a 26 megapixel Film went from
+        // 198 ms to 1.1 s at that step. A tenth of the card's memory, kept between 128 MB and 512 MB, lets a
+        // 45 megapixel photo through; a card that still refuses falls back as it always did.
+        public static long MaxPlaneBytes = 96L * 1024 * 1024;
+        public static int MaxTilePixels { get { return (int)(MaxPlaneBytes / 4); } }
+
+        // Worked out once the card is known: a tenth of its memory, never below the old 96 MB nor above 512 MB.
+        // A photo bigger than this is cut into parts that fit (Pipeline.ApplyTiled) rather than handed to the
+        // processor whole.
+        // Not simply as much as the card can hold: several pictures have to sit there at once for a stack to
+        // run without being fetched back and sent again. Handed a 54 megapixel photo whole, this card spent
+        // 7.1 s on Film against 2.6 s on the processor, because each picture is 648 MB and they no longer fit
+        // together. In parts of about this size the same photo keeps the card's advantage.
+        static void SizeLimits()
+        {
+            // Measured on an 8 GB card, each figure the quicker of two runs of the same edit:
+            //   24 MP  card 169 ms, processor  504 ms      36 MP  card 265 ms, processor  905 ms
+            //   31 MP  card 234 ms, processor  635 ms      54 MP  card 677 ms and worse, processor 969 ms
+            // The card keeps its lead to about 40 megapixels and then loses it, because a picture that size is
+            // 648 MB and several no longer sit on the card together. A fortieth of the card's memory lands at
+            // 200 MB a plane, which is 50 megapixels: kept to 160 MB (40 megapixels) to stay the right side of
+            // that. A photo bigger than this goes to the processor, as it always did.
+            MaxPlaneBytes = Math.Max(96L << 20, Math.Min(160L << 20, VideoMemory / 40));
+        }
         public static string Adapter = "";
         // every graphics card the machine has, as "name (memory, kind)", in the order Windows lists them
         public static readonly List<string> Adapters = new List<string>();
@@ -66,10 +92,30 @@ namespace PixTune
         // 1 = this thread's image tools on the CPU, 2 = on the card, 0 = as ImageTools says.
         public static int ForceOnThisThread { get { return forced; } set { forced = value; } }
 
+        // Which tool is being applied, so a tool the card is slower at can be left on the processor. A tool's
+        // work has to be worth sending the picture over and fetching it back, and whether it is depends on the
+        // tool and on how big the picture is: Dehaze is nearly twice as quick on the processor at 22 megapixels
+        // but even at preview size, while Black & White is the other way round. The speed test measures each
+        // tool at both sizes and fills CpuAt below.
+        [ThreadStatic] public static string CurrentTool;
+        // tool name -> the sizes the processor wins at: "s" small, "l" large, "sl" both
+        public static readonly Dictionary<string, string> CpuAt = new Dictionary<string, string>();
+        public const int BigPicture = 4000000;   // above this a picture counts as large
+
+        static bool ToolPrefersCpu(int pixels)
+        {
+            string t = CurrentTool;
+            if (t == null || CpuAt.Count == 0) return false;
+            string where;
+            lock (CpuAt) if (!CpuAt.TryGetValue(t, out where)) return false;
+            return where.IndexOf(pixels >= BigPicture ? 'l' : 's') >= 0;
+        }
+
         public static bool Use(int pixels)
         {
             if (!Enabled || forced == 1 || (forced != 2 && !ImageTools) || pixels < MinPixels) return false;
-            if (pixels * 4L > 96L * 1024 * 1024) return false; // stay under the guaranteed resource size
+            if (pixels * 4L > MaxPlaneBytes) return false;      // a plane has to fit in one buffer on the card
+            if (forced != 2 && ToolPrefersCpu(pixels)) return false;
             return Available;
         }
 
@@ -283,6 +329,7 @@ float Hash(int x, int y, int seed) {
             int hr = D3D11CreateDevice(adapter, driver, IntPtr.Zero, 0, levels, 1, 7, out dev, out level, out ctx);
             if (adapter != IntPtr.Zero) Release(adapter);
             if (hr != 0) { LastError = "D3D11CreateDevice failed 0x" + hr.ToString("X8"); return false; }
+            SizeLimits();
             createBuffer = (CreateBufferFn)Fn(dev, 3, typeof(CreateBufferFn));
             createSrv = (CreateViewFn)Fn(dev, 7, typeof(CreateViewFn));
             createUav = (CreateViewFn)Fn(dev, 8, typeof(CreateViewFn));

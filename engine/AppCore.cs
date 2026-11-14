@@ -62,6 +62,9 @@ namespace PixTune
         public string[] Favorites = new string[0];
         public string[] GpuModels = new string[0];   // GPU check results (GpuCheck)
         public string GpuSpeed = "";                 // image tools on the card or the processor (GpuCheck.MeasureSpeed)
+        public bool CheckUpdates = true;             // look on GitHub for a newer version, once a day
+        public string UpdateSkipped = "";            // a version the owner chose not to install
+        public string UpdateChecked = "";            // when it last looked
 
         public static string FilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PixTune\\settings.json");
 
@@ -91,6 +94,9 @@ namespace PixTune
                 object[] gm = (d.TryGetValue("GpuModels", out o) ? o : null) as object[];
                 if (gm != null) { List<string> l = new List<string>(); foreach (object g in gm) if (g != null) l.Add(Convert.ToString(g)); s.GpuModels = l.ToArray(); }
                 if (d.TryGetValue("GpuSpeed", out o) && o != null) s.GpuSpeed = Convert.ToString(o);
+                if (d.TryGetValue("CheckUpdates", out o) && o != null) s.CheckUpdates = Convert.ToBoolean(o);
+                if (d.TryGetValue("UpdateSkipped", out o) && o != null) s.UpdateSkipped = Convert.ToString(o);
+                if (d.TryGetValue("UpdateChecked", out o) && o != null) s.UpdateChecked = Convert.ToString(o);
             }
             catch (Exception) { }
             return s;
@@ -103,6 +109,7 @@ namespace PixTune
             d["UseGpu"] = UseGpu; d["ExportDir"] = ExportDir; d["LastDir"] = LastDir; d["Appearance"] = Appearance;
             d["ShowHistogram"] = ShowHistogram; d["Favorites"] = Favorites; d["HealAi"] = HealAi; d["MaskFolded"] = MaskFolded;
             d["GpuModels"] = GpuModels; d["GpuSpeed"] = GpuSpeed;
+            d["CheckUpdates"] = CheckUpdates; d["UpdateSkipped"] = UpdateSkipped; d["UpdateChecked"] = UpdateChecked;
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
             File.WriteAllText(FilePath, new JavaScriptSerializer().Serialize(d));
         }

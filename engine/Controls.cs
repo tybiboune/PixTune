@@ -545,6 +545,64 @@ namespace PixTune
         void DropPatch() { if (patch != null) { patch.Dispose(); patch = null; } }
         public bool HasPatch { get { return patch != null; } }
 
+        // ---- the little map, shown in the corner while zoomed in ----
+        // The whole photo small, with the part on screen marked on it; dragging that part moves the view, so a
+        // photo at 100% can be navigated without panning blindly across it.
+        public bool ShowMap = true;
+
+        RectangleF MapRect()
+        {
+            if (img == null || fit || ShowCompare || !ShowMap) return RectangleF.Empty;
+            RectangleF v = VisibleNorm;
+            if (v.Width > 0.98f && v.Height > 0.98f) return RectangleF.Empty;   // all of it is on screen already
+            float side = Ui.Px(140), m = Ui.Px(14);
+            float ar = (float)img.Width / img.Height;
+            float w = ar >= 1 ? side : side * ar, h = ar >= 1 ? side / ar : side;
+            return new RectangleF(Width - w - m, Height - h - m, w, h);
+        }
+
+        // puts the middle of the part on screen where the pointer is on the map
+        void MapTo(PointF p)
+        {
+            RectangleF nr = MapRect();
+            if (nr.IsEmpty || nr.Width <= 0) return;
+            RectangleF v = VisibleNorm, r = ImgRect();
+            float cx = (p.X - nr.X) / nr.Width, cy = (p.Y - nr.Y) / nr.Height;
+            float hw = v.Width / 2, hh = v.Height / 2;
+            cx = Math.Max(hw, Math.Min(1 - hw, cx));
+            cy = Math.Max(hh, Math.Min(1 - hh, cy));
+            fit = false;
+            pan = new PointF(r.Width * (0.5f - cx), r.Height * (0.5f - cy));
+            Invalidate(); RaiseView();
+        }
+
+        void DrawMap(Graphics g)
+        {
+            RectangleF nr = MapRect();
+            if (nr.IsEmpty) return;
+            RectangleF v = VisibleNorm;
+            GraphicsState st = g.Save();
+            g.SmoothingMode = SmoothingMode.None;
+            g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(150, 0, 0, 0)))
+                g.FillRectangle(b, nr.X - 2, nr.Y - 2, nr.Width + 4, nr.Height + 4);
+            g.DrawImage(img, nr);
+            RectangleF vis = new RectangleF(nr.X + v.X * nr.Width, nr.Y + v.Y * nr.Height,
+                                            Math.Max(3f, v.Width * nr.Width), Math.Max(3f, v.Height * nr.Height));
+            // what is off screen is dimmed, so the part in view stands out
+            using (SolidBrush dim = new SolidBrush(Color.FromArgb(115, 0, 0, 0)))
+            using (Region outside = new Region(nr))
+            {
+                outside.Exclude(vis);
+                g.FillRegion(dim, outside);
+            }
+            using (Pen p = new Pen(Color.FromArgb(70, 0, 0, 0), 3f)) g.DrawRectangle(p, vis.X, vis.Y, vis.Width, vis.Height);
+            using (Pen p = new Pen(Color.FromArgb(245, 255, 255, 255), 1.4f)) g.DrawRectangle(p, vis.X, vis.Y, vis.Width, vis.Height);
+            using (Pen p = new Pen(Color.FromArgb(120, 255, 255, 255), 1f)) g.DrawRectangle(p, nr.X, nr.Y, nr.Width, nr.Height);
+            g.Restore(st);
+        }
+
         // the part of the photo inside the view, in fractions of the photo
         public RectangleF VisibleNorm
         {
@@ -887,6 +945,7 @@ namespace PixTune
                 if (mask != null) { g.InterpolationMode = InterpolationMode.Bilinear; g.DrawImage(mask, r); }
                 DrawOverlay(g, r);
             }
+            DrawMap(g);
             POverlay += pw.Elapsed.TotalMilliseconds - t0;
             PTotal += pw.Elapsed.TotalMilliseconds; Paints++;
             if (ShowCompare) DrawPill(g, "Original", new PointF(Width / 2f, 18));
@@ -1147,7 +1206,7 @@ namespace PixTune
         }
 
         // ---------------- mouse ----------------
-        enum Drag { None, Pan, Adjust, Undecided, CropMove, CropHandle, Point, Center, EllX, EllY, EllRot, Brush, Quad, Move, ZoneX, ZoneY, ZoneRot }
+        enum Drag { None, Pan, Adjust, Undecided, CropMove, CropHandle, Point, Center, EllX, EllY, EllRot, Brush, Quad, Move, ZoneX, ZoneY, ZoneRot, Map }
         Drag drag = Drag.None;
         Point down, last;
         PointF hover = new PointF(-9999, -9999);
@@ -1175,6 +1234,9 @@ namespace PixTune
             if (img == null) return;
             if (e.Button == MouseButtons.Middle || e.Button == MouseButtons.Right || spaceDown) { drag = Drag.Pan; if (fit) { fit = false; } return; }
             if (e.Button != MouseButtons.Left) return;
+            // the little map takes the click wherever a tool is open: it is small, in the corner and outlined
+            RectangleF mr = MapRect();
+            if (!mr.IsEmpty && mr.Contains(e.Location)) { drag = Drag.Map; MapTo(e.Location); return; }
             { EventHandler h = Pressing; if (h != null) h(this, EventArgs.Empty); }
             PointF pt = e.Location;
             switch (Mode)
@@ -1253,6 +1315,8 @@ namespace PixTune
             RectangleF r = ImgRect();
             switch (drag)
             {
+                case Drag.Map:
+                    MapTo(e.Location); break;
                 case Drag.Pan:
                     // the view moved: zoomed in, the part coming into view is rendered once it stops (App)
                     fit = false; pan = new PointF(pan.X + dx, pan.Y + dy); Invalidate(); RaiseView(); break;

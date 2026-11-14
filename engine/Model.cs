@@ -271,6 +271,8 @@ namespace PixTune
         public static Img Apply(Img src, Step s)
         {
             if (s.Hidden) return src.Clone();
+            // too big for the card in one go: worked out in parts that fit, each on the card
+            if (WouldTile(src, s)) return ApplyTiled(src, s);
             Img o;
             switch (s.Tool)
             {
@@ -417,6 +419,64 @@ namespace PixTune
                     try { Step s = new Step(id); s.Set("strength", 50); s.Set("brightness", 10); Apply(im, s); } catch { }
                 }
             });
+        }
+
+        // A photo too big for the card is cut into parts that fit and each is worked on there, instead of the
+        // whole thing falling back to the processor. The parts are taken exactly as live view takes the piece
+        // on screen: each carries a margin as wide as the tool's filters reach, and knows where it sits in the
+        // whole photo, so sizes, grain, vignettes and masks come out as they would on the whole. Only tools
+        // that can be worked out on a part (RegionSafe) are cut up; the others still go to the processor.
+        // Off: measured, it costs more than it saves. A photo cut into parts has to carry a margin as wide as
+        // the tool's filters reach, and for Tune that margin is 150 pixels times the scale: at 36 megapixels
+        // the parts came to two and a half times the photo's own pixels, and each part is copied out and the
+        // answer copied back. Tiled came to 1.3 s against 0.6 s for simply using the processor. It is kept
+        // because a card with little memory, where the whole photo cannot go over at all, is the case it was
+        // written for -- turn it on there and measure.
+        public static bool Tiling = false;
+
+        public static bool WouldTile(Img src, Step s)
+        {
+            return Tiling && Gpu.Enabled && Gpu.ImageTools && src != null && !s.Hidden
+                && (long)src.W * src.H > Gpu.MaxTilePixels && RegionSafe(s) && !IsGeometric(s.Tool)
+                && Gpu.MaxTilePixels > 0 && Gpu.Available;
+        }
+
+        public static Img ApplyTiled(Img src, Step s)
+        {
+            int W = src.W, H = src.H;
+            int margin = RegionMargin(s, src);
+            // the biggest inner part whose margins still fit the card, kept squarish so the margin costs least
+            long budget = Gpu.MaxTilePixels;
+            int side = (int)Math.Sqrt((double)budget);
+            int inner = Math.Max(256, side - 2 * margin);
+            int nx = Math.Max(1, (int)Math.Ceiling(W / (double)inner));
+            int ny = Math.Max(1, (int)Math.Ceiling(H / (double)inner));
+            int tw = (int)Math.Ceiling(W / (double)nx), th = (int)Math.Ceiling(H / (double)ny);
+            Img o = Img.Unfilled(W, H);
+            o.CopyFrame(src);
+            float[] od = o.D;
+            for (int ty = 0; ty < ny; ty++)
+                for (int tx = 0; tx < nx; tx++)
+                {
+                    CheckCancel();
+                    int vx = tx * tw, vy = ty * th;
+                    int vr = Math.Min(W, vx + tw), vb = Math.Min(H, vy + th);
+                    if (vr <= vx || vb <= vy) continue;
+                    // the part starts on a multiple of 8 so the fast guided filter's shrunk grid lines up
+                    int x0 = Math.Max(0, vx - margin), y0 = Math.Max(0, vy - margin);
+                    x0 -= x0 % 8; y0 -= y0 % 8;
+                    int x1 = Math.Min(W, vr + margin), y1 = Math.Min(H, vb + margin);
+                    Img part = src.Region(x0, y0, x1 - x0, y1 - y0);
+                    Img done = Apply(part, s);
+                    part.Recycle();
+                    // the margin is cut off and what remains is written into its place in the whole picture
+                    int ix = vx - x0, iy = vy - y0, iw = vr - vx, ih = vb - vy;
+                    float[] dd = done.D;
+                    for (int y = 0; y < ih; y++)
+                        Buffer.BlockCopy(dd, ((iy + y) * done.W + ix) * 12, od, ((vy + y) * W + vx) * 12, iw * 12);
+                    done.Recycle();
+                }
+            return o;
         }
 
         public static Img ApplyAll(Img src, List<Step> steps)

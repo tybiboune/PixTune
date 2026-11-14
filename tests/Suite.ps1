@@ -9,7 +9,7 @@ $script:SuitePhoto = $App.Doc.Path
 $script:SuiteTests = New-Object System.Collections.Queue
 $names = if ($env:PIXTUNE_SUITE) { $env:PIXTUNE_SUITE -split ',' } else {
     'SelfTest', 'ClickTest', 'FeatureTest', 'ZoomTest', 'HealModeTest', 'ToneCurveTest', 'LookEditTest',
-    'RawMaskTest', 'SelectiveZoneTest', 'MaskPanelTest', 'UndoTest', 'ExpandTest', 'LiveRegionTest', 'GpuCheckTest', 'GpuToolTest', 'StackHideTest', 'ProjectTest', 'MemoTest', 'DenoiseTest', 'LatencyTest', 'FeelTest'
+    'RawMaskTest', 'SelectiveZoneTest', 'MaskPanelTest', 'UndoTest', 'ExpandTest', 'LiveRegionTest', 'GpuCheckTest', 'GpuToolTest', 'StackHideTest', 'ProjectTest', 'MemoTest', 'DenoiseTest', 'LatencyTest', 'FeelTest', 'MapTest'
 }
 foreach ($n in $names) { $script:SuiteTests.Enqueue($n.Trim()) }
 $script:SuiteLog = New-Object System.Collections.Generic.List[string]

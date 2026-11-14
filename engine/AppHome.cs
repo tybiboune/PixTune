@@ -753,6 +753,33 @@ namespace PixTune
                 {
                     if (RunGpuCheck(true)) showGpu();
                 };
+                // which version this is, and a button to look on GitHub for a newer one
+                Button ut = new Button(); ut.Text = "Check for updates"; ut.Size = new Size(S(120), S(26)); ut.FlatStyle = FlatStyle.Flat;
+                Label us = new Label(); us.AutoSize = false; us.Size = new Size(S(160), S(38)); us.Location = new Point(S(296), S(y));
+                CheckBox au = new CheckBox(); au.Text = "look once a day"; au.Checked = Settings.CheckUpdates;
+                au.AutoSize = true; au.Location = new Point(S(296), S(y + 20)); au.ForeColor = Theme.Dim;
+                row("Version", ut);
+                f.Controls.Add(us); f.Controls.Add(au);
+                Action showUpd = () =>
+                {
+                    us.Text = Updater.Working.Length > 0 ? Updater.Working
+                        : Updater.Available ? Updater.Latest + " is available"
+                        : Updater.LastError.Length > 0 ? "This copy is " + Updater.Current
+                        : "This copy is " + Updater.Current;
+                    ut.Enabled = !Updater.Checking && !Updater.Installing;
+                    string nl = Environment.NewLine;
+                    Tips.SetToolTip(us, "This copy is PixTune " + Updater.Current
+                        + (Updater.Latest.Length > 0 ? nl + "Newest published: " + Updater.Latest : "")
+                        + (Updater.LastError.Length > 0 ? nl + Updater.LastError : ""));
+                    Tips.SetToolTip(ut, "Looks on GitHub for a newer PixTune and offers to put it in place." + nl
+                        + "Nothing is replaced without being asked, and the version you have is kept so it can be put back.");
+                };
+                showUpd();
+                System.Windows.Forms.Timer utTimer = new System.Windows.Forms.Timer(); utTimer.Interval = 400;
+                utTimer.Tick += (s, e) => showUpd();
+                utTimer.Start();
+                f.FormClosed += (s, e) => { utTimer.Stop(); utTimer.Dispose(); };
+                ut.Click += (s, e) => LookForUpdate(true);
                 Button ok = new Button(); ok.Text = "OK"; ok.DialogResult = DialogResult.OK; ok.Location = new Point(S(270), S(402)); ok.Size = new Size(S(84), S(32));
                 Button ca = new Button(); ca.Text = "Cancel"; ca.DialogResult = DialogResult.Cancel; ca.Location = new Point(S(362), S(402)); ca.Size = new Size(S(84), S(32));
                 f.Controls.AddRange(new Control[] { ok, ca }); f.AcceptButton = ok; f.CancelButton = ca; f.ActiveControl = ok;
@@ -764,6 +791,7 @@ namespace PixTune
                 Settings.KeepExif = ex.Checked;
                 Settings.ExportDir = dir.Text;
                 Settings.UseGpu = gpu.Checked;
+                Settings.CheckUpdates = au.Checked;
                 Gpu.Enabled = gpu.Checked;
                 SetStatus("Processing on " + GpuStatus());
                 if ((string)ap.SelectedItem != Settings.Appearance)
