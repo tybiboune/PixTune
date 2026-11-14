@@ -131,7 +131,10 @@ namespace PixTune
             // A glow is a wide blur of the brightest parts: it holds nothing fine, so it is built on a copy
             // shrunk by ds and stretched back, which is where nearly all of this tool's time used to go. The
             // blocks are counted from the photo's own corner (FX, FY), so a part of the photo rendered on its
-            // own lines up with the whole one. A narrow glow (ds = 1) is still built at full size.
+            // own lines up with the whole one. A narrow glow (ds = 1) is still built at full size. Where the
+            // picture runs out, a blur of block averages and a full-size blur part company by about a level over
+            // the outermost pixels: inside a part that band is thrown away with the margin, and at the edge of the
+            // photo it is one approximation of a wide glow against another.
             int ds = 1; while (GlowSmall && ds < 4 && sig / (ds * 2) >= 8f) ds *= 2;
             while (ds > 1 && (src.FX % ds != 0 || src.FY % ds != 0)) ds /= 2;   // a part whose corner does not land on the grid
             int sw = (w + ds - 1) / ds, sh = (h + ds - 1) / ds;

@@ -17,15 +17,30 @@ function global:New-GtStep([string]$id, [int]$style) {
     foreach ($b in 'red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta') { $s.Set("h_$b", 20); $s.Set("s_$b", 30); $s.Set("l_$b", -10) }
     $s
 }
-function global:Test-GpuTool($im, [string]$id, [int]$style, [string]$where) {
+# A part is rendered with a margin that the stack throws away (Pipeline.RegionMargin), because a blur cannot be
+# right where it runs out of picture: only what is inside that margin is kept and shown. So a part is compared
+# inside its margin, which is what the comparison is about; outside it the two paths are free to differ, and for a
+# wide glow they do by about a level (the processor builds a glow on a shrunk copy, the card at full size).
+function global:Test-GpuTool($im, [string]$id, [int]$style, [string]$where, [int]$skip = 0) {
     $s = New-GtStep $id $style
     [PixTune.Gpu]::Enabled = $false
     $sw = [Diagnostics.Stopwatch]::StartNew(); $cpu = [PixTune.Pipeline]::Apply($im, $s); $tc = $sw.ElapsedMilliseconds
     [PixTune.Gpu]::Enabled = $true; [PixTune.Gpu]::LastError = ''
     $sw.Restart(); $gpu = [PixTune.Pipeline]::Apply($im, $s); $tg = $sw.ElapsedMilliseconds
-    $mx = 0.0
-    for ($i = 0; $i -lt $cpu.D.Length; $i += 211) { $e = [Math]::Abs($cpu.D[$i] - $gpu.D[$i]); if ($e -gt $mx) { $mx = $e } }
-    Expect ($mx -lt 0.004 -and -not [PixTune.Gpu]::LastError) ("{0} {1} ({2}): same pixels on GPU and CPU (largest difference {3:N5}; cpu {4} ms, gpu {5} ms) {6}" -f $id, $style, $where, $mx, $tc, $tg, [PixTune.Gpu]::LastError)
+    if ($skip -gt 0) { $skip = [PixTune.Pipeline]::RegionMargin($s, $App.Doc.Preview) }
+    $mx = 0.0; $a = $cpu.D; $b = $gpu.D; $w = $cpu.W
+    $x1 = $cpu.W - $skip; $y1 = $cpu.H - $skip
+    if ($x1 -le $skip -or $y1 -le $skip) { $skip = 0; $x1 = $cpu.W; $y1 = $cpu.H }
+    if ($skip -eq 0) {
+        for ($i = 0; $i -lt $a.Length; $i += 211) { $e = [Math]::Abs($a[$i] - $b[$i]); if ($e -gt $mx) { $mx = $e } }
+    } else {
+        for ($y = $skip; $y -lt $y1; $y++) {
+            $row = $y * $w * 3; $end = $row + $x1 * 3
+            for ($i = $row + $skip * 3; $i -lt $end; $i += 211) { $e = [Math]::Abs($a[$i] - $b[$i]); if ($e -gt $mx) { $mx = $e } }
+        }
+    }
+    $in = if ($skip -gt 0) { ", {0} px inside the margin" -f $skip } else { "" }
+    Expect ($mx -lt 0.004 -and -not [PixTune.Gpu]::LastError) ("{0} {1} ({2}): same pixels on GPU and CPU (largest difference {3:N5}{4}; cpu {5} ms, gpu {6} ms) {7}" -f $id, $style, $where, $mx, $in, $tc, $tg, [PixTune.Gpu]::LastError)
 }
 $script:GtCases = @(@('tune', 0), @('details', 0), @('hdr', 0), @('glamour', 2), @('tonal', 0), @('drama', 4), @('vintage', 11), @('grainy', 3),
     @('noir', 4), @('film', 0), @('film', 8), @('film', 9), @('bloom', 0), @('halation', 0), @('rawdev', 0),
@@ -41,7 +56,7 @@ St 'whole' {
 St 'part' {
     $p = $App.Doc.Preview
     $part = $p.Region(300, 200, $p.W - 500, $p.H - 400)
-    foreach ($c in $script:GtCases) { Test-GpuTool $part $c[0] $c[1] 'part' }
+    foreach ($c in $script:GtCases) { Test-GpuTool $part $c[0] $c[1] 'part' 1 }
 }
 St 'stack' {
     # a slider frame on the second of five steps: the pictures stay on the card, only the bitmap comes back

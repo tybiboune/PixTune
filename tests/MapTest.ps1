@@ -9,10 +9,11 @@ function global:Expect([bool]$ok, [string]$what) { $script:Trace.Add(("{0} {1}" 
 # the private corner rectangle, so the test checks what the window really draws
 function global:MapRect {
     $m = [PixTune.ImageCanvas].GetMethod('MapRect', [Reflection.BindingFlags]'Instance,NonPublic')
-    [RectangleF]$m.Invoke($App.Canvas, @())
+    [System.Drawing.RectangleF]$m.Invoke($App.Canvas, @())
 }
 function global:Press($x, $y) {
-    $ev = New-Object System.Windows.Forms.MouseEventArgs ([System.Windows.Forms.MouseButtons]::Left), 1, [int]$x, [int]$y, 0
+    $ix = [int]$x; $iy = [int]$y
+    $ev = New-Object System.Windows.Forms.MouseEventArgs ([System.Windows.Forms.MouseButtons]::Left), 1, $ix, $iy, 0
     $App.Canvas.GetType().GetMethod('OnMouseDown', [Reflection.BindingFlags]'Instance,NonPublic').Invoke($App.Canvas, @([System.Windows.Forms.MouseEventArgs]$ev))
 }
 

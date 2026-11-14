@@ -558,7 +558,8 @@ namespace PixTune
             float side = Ui.Px(140), m = Ui.Px(14);
             float ar = (float)img.Width / img.Height;
             float w = ar >= 1 ? side : side * ar, h = ar >= 1 ? side / ar : side;
-            return new RectangleF(Width - w - m, Height - h - m, w, h);
+            // clear of the zoom badge in the same corner
+            return new RectangleF(Width - w - m, Height - h - m - Ui.Px(26), w, h);
         }
 
         // puts the middle of the part on screen where the pointer is on the map

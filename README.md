@@ -1,5 +1,10 @@
 # PixTune
 
+**[Download the latest release](https://github.com/tybiboune/PixTune/releases/latest)** &nbsp;·&nbsp;
+[All releases](https://github.com/tybiboune/PixTune/releases) &nbsp;·&nbsp; extract it anywhere and
+double-click `PixTune.bat`. Once it is running it keeps itself up to date: Settings > Version > **Check for
+updates**.
+
 A desktop photo editor for Windows modelled on the mobile app Snapseed: the same tools, filters, looks,
 editable stack and gestures, running on a PC. It needs nothing beyond Windows itself. The whole program
 (window, tools and image engine) is C# source in `engine\`: on first launch the C# compiler built into
@@ -201,6 +206,24 @@ photo instead of marching by a fixed step and pushing the last one back inside, 
 top of its neighbour, and they share 16 pixels instead of 24, which the pictures tested cannot tell apart from
 sharing 48 (0.14 levels on average either way). A 1.6 MP preview went from 40 tiles to 35, about 9% quicker.
 
+## Finding your way around a zoomed photo
+
+Zoom past Fit and the whole photo appears small in the bottom right corner, with the part on screen marked on
+it and everything else dimmed. Press or drag inside that map and the view goes there, so a 24 megapixel photo
+at 100% can be crossed in one movement instead of by panning blindly. It appears only while part of the photo
+is off screen, sits clear of the zoom badge, and can be used while a tool is open.
+
+## Keeping PixTune up to date
+
+PixTune looks at its GitHub releases for a newer version: once a day in the background, and whenever **Check
+for updates** is pressed in Settings, which also shows which version this copy is. It never replaces anything
+on its own -- it says what it found and asks, and asks again if the open photo has unsaved edits. What it
+replaces is kept first in a dated folder under `%LOCALAPPDATA%\PixTune\update`, so a bad update can be undone
+by copying that back. Only `engine`, `lib`, `tests`, the scripts and the README are touched; anything else in
+the folder is left alone. It will only fetch from `github.com` and its own content hosts, over https, and
+nothing is put in place until the download has been unpacked and found to be a PixTune folder. Turn the daily
+look off with the tick box beside the button.
+
 ## Working like the mobile app
 
 - Drag horizontally on the photo to change the selected slider, drag vertically to pick another slider.
@@ -258,7 +281,9 @@ A slider move on the second of five steps (Tune, then Film, Vignette and Curves 
 
 `tests\GpuToolTest.ps1` checks that every GPU version gives the same pixels as the CPU code, on the whole photo,
 on a live-view part and through a masked stack kept on the card; `tests\Bench-Gpu.ps1` measures the blurs on
-your machine.
+your machine. A part is compared inside the margin the stack throws away, because that is the part of it that is
+kept and shown: outside it a wide glow differs by about a level, the processor building it on a shrunk copy and
+the card at full size.
 
 In a blur on the card, each thread of the downward pass walks a run of rows keeping a running sum, so a pixel
 costs two reads whatever the blur's width. The sideways pass keeps its plain sum on purpose: there, neighbouring

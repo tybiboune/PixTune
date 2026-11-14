@@ -92,30 +92,10 @@ namespace PixTune
         // 1 = this thread's image tools on the CPU, 2 = on the card, 0 = as ImageTools says.
         public static int ForceOnThisThread { get { return forced; } set { forced = value; } }
 
-        // Which tool is being applied, so a tool the card is slower at can be left on the processor. A tool's
-        // work has to be worth sending the picture over and fetching it back, and whether it is depends on the
-        // tool and on how big the picture is: Dehaze is nearly twice as quick on the processor at 22 megapixels
-        // but even at preview size, while Black & White is the other way round. The speed test measures each
-        // tool at both sizes and fills CpuAt below.
-        [ThreadStatic] public static string CurrentTool;
-        // tool name -> the sizes the processor wins at: "s" small, "l" large, "sl" both
-        public static readonly Dictionary<string, string> CpuAt = new Dictionary<string, string>();
-        public const int BigPicture = 4000000;   // above this a picture counts as large
-
-        static bool ToolPrefersCpu(int pixels)
-        {
-            string t = CurrentTool;
-            if (t == null || CpuAt.Count == 0) return false;
-            string where;
-            lock (CpuAt) if (!CpuAt.TryGetValue(t, out where)) return false;
-            return where.IndexOf(pixels >= BigPicture ? 'l' : 's') >= 0;
-        }
-
         public static bool Use(int pixels)
         {
             if (!Enabled || forced == 1 || (forced != 2 && !ImageTools) || pixels < MinPixels) return false;
             if (pixels * 4L > MaxPlaneBytes) return false;      // a plane has to fit in one buffer on the card
-            if (forced != 2 && ToolPrefersCpu(pixels)) return false;
             return Available;
         }
 
