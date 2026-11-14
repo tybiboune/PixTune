@@ -456,6 +456,16 @@ on a card. On that 22 MP photo Grunge went from 397 ms on the processor to 207 m
 726 ms to 350 ms (its scratches are still drawn on the processor, so the picture comes back for them).
 `tests\GpuToolTest.ps1` checks both against the processor, on the whole photo and on a part.
 
+Retrolux's damage is drawn as the three things an old print really shows. A scratch is where grit in the gate cut
+the emulsion away, so it lets light through and prints bright, with a thin dark ridge of displaced emulsion hard
+against one side; it weaves as the film moves, its width breathes, it fades in and out along its length, and it
+usually cuts one dye layer, which tints it warm or cool. Then the hairs caught in the gate: thin dark curves that
+bend as they lie and taper at both ends. Then the dust, which is dirt on the print printing dark and dust on the
+negative printing white, with an edge that wobbles, because a speck has no radius. They are spread across the
+frame rather than left to chance, which bunches them against one edge, and come in close pairs, because grit sits
+at its own places in the gate. What they replace was straight lines of even brightness and perfectly round dots,
+which is what made them look drawn rather than photographed.
+
 On a slow computer the frames are computed at a lower resolution while the slider moves (each frame aims at about
 70 ms; down to a third of the size), and letting go renders at full quality. Zoomed in past the preview, letting
 go no longer renders the whole photo at full resolution: the preview with every edit goes under the view and the

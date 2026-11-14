@@ -315,44 +315,133 @@ namespace PixTune
             }
             if (scratch > 0)
             {
-                // scratches: thin, slightly wavy vertical lines plus dust specks (drawn on the processor, so a
-                // picture left on the card comes back here)
+                // Film damage, drawn on the processor (a picture left on the card comes back for it). Three kinds,
+                // because that is what an old print shows: long scratches down the frame where grit in the gate
+                // dragged on the film, hairs caught in the gate, and dust. A scratch cuts the emulsion away, so
+                // it lets light through and prints bright, with a thin dark ridge of displaced emulsion beside it;
+                // it weaves as the film moves, fades in and out along its length, and often cuts only one dye
+                // layer, which tints it. Even brightness down a ruler-straight line is what made these look drawn.
                 float[] D = o.D;
-                int ns = (int)(4 + scratch * 26);
+                int ns = (int)(3 + scratch * 13);
                 for (int i = 0; i < ns; i++)
                 {
-                    float x0 = (float)rnd.NextDouble() * w;
-                    float y0 = (float)rnd.NextDouble() * h, len = (0.2f + (float)rnd.NextDouble() * 0.8f) * h;
-                    float bright = rnd.Next(3) == 0 ? -0.25f : 0.35f;
-                    float wd = Math.Max(0.6f, (0.5f + (float)rnd.NextDouble()) * sc);
-                    float drift = ((float)rnd.NextDouble() - 0.5f) * 0.08f;
-                    for (int y = (int)y0; y < Math.Min(h, (int)(y0 + len)); y++)
+                    // spread across the frame rather than left to chance, which bunches them against one edge;
+                    // grit sits at its own places in the gate, so they also come in close pairs
+                    float x0 = (i + 0.15f + 0.7f * (float)rnd.NextDouble()) / ns * w;
+                    if (i > 0 && rnd.Next(4) == 0) x0 -= (0.5f + (float)rnd.NextDouble() * 2.5f) * sc;
+                    bool full = rnd.Next(4) == 0;                      // a few run the whole frame
+                    float y0 = full ? 0 : (float)rnd.NextDouble() * h * 0.75f;
+                    float len = full ? h : (0.12f + (float)rnd.NextDouble() * 0.55f) * h;
+                    float drift = ((float)rnd.NextDouble() - 0.5f) * 0.05f;
+                    float wd = Math.Max(0.5f, (0.3f + (float)rnd.NextDouble() * 1.0f) * sc);
+                    bool light = rnd.Next(5) > 0;                      // the emulsion is gone: it prints bright
+                    float amp = (light ? 0.34f : -0.26f) * (0.45f + (float)rnd.NextDouble() * 0.9f);
+                    float ridge = rnd.Next(2) == 0 ? 1f : -1f;         // the side the displaced emulsion fell on
+                    int sd = seed * 131 + i * 17;
+                    // one dye layer cut: warm where the yellow went, cool where the cyan did
+                    int tint = rnd.Next(4);
+                    float tr = tint == 1 ? 1f : tint == 2 ? 0.82f : 1f;
+                    float tg = tint == 1 ? 0.93f : tint == 2 ? 0.96f : 1f;
+                    float tb = tint == 1 ? 0.76f : tint == 2 ? 1f : 1f;
+                    int ya = (int)y0, yb = (int)Math.Min(h, y0 + len);
+                    for (int y = ya; y < yb; y++)
                     {
-                        float cx = x0 + (y - y0) * drift + (Ops.VNoise(y / (60f * sc), i, seed) - 0.5f) * 6 * sc;
-                        for (int x = (int)(cx - wd - 1); x <= (int)(cx + wd + 1); x++)
+                        float t = (y - y0) / Math.Max(1f, len);
+                        // it fades in and out, and now and then lifts off the film altogether
+                        float env = Ops.SmoothStep(0.2f, 0.62f, Ops.VNoise(y / (190f * sc), i * 2.3f, sd + 5));
+                        if (!full) env *= Ops.SmoothStep(0f, 0.14f, t) * Ops.SmoothStep(0f, 0.14f, 1 - t);
+                        if (env <= 0.01f) continue;
+                        // the weave of the film, and a hair of jitter so the line is not suspiciously smooth
+                        float cx = x0 + (y - y0) * drift
+                                 + (Ops.VNoise(y / (85f * sc), i * 3.1f, sd) - 0.5f) * 5f * sc
+                                 + (Ops.VNoise(y / (2.5f * sc), i * 5.7f, sd + 9) - 0.5f) * 0.45f * sc;
+                        float ww = wd * (0.5f + 1.0f * Ops.VNoise(y / (150f * sc), i * 7.7f, sd + 2));
+                        float a0 = amp * env * scratch;
+                        float rw = Math.Max(0.6f, 1.1f * sc);
+                        int xa = (int)(cx - ww - rw - 1), xb = (int)(cx + ww + rw + 1);
+                        for (int x = xa; x <= xb; x++)
                         {
                             if (x < 0 || x >= w) continue;
-                            float a = (1 - Ops.SmoothStep(0, wd + 0.5f, Math.Abs(x - cx))) * scratch * 0.8f;
+                            float dx = x - cx;
+                            float core = 1 - Ops.SmoothStep(ww * 0.3f, ww + 0.55f, Math.Abs(dx));
+                            // the ridge: a thinner, darker line hard against one side of the cut
+                            float rd = (dx * ridge - ww - 0.6f * sc) / rw;
+                            float side = (1 - Ops.SmoothStep(0f, 1f, Math.Abs(rd))) * 0.4f;
+                            float v = a0 * (core - side);
+                            if (v == 0) continue;
                             int j = (y * w + x) * 3;
-                            for (int c = 0; c < 3; c++) D[j + c] = D[j + c] + bright * a;
+                            D[j] += v * tr; D[j + 1] += v * tg; D[j + 2] += v * tb;
                         }
                     }
                 }
-                int nd = (int)(scratch * 220);
+                // hairs caught in the gate: thin, dark, curved, and never straight
+                int nh = (int)(scratch * 3.4f);
+                for (int i = 0; i < nh; i++)
+                {
+                    float hx = (float)rnd.NextDouble() * w, hy = (float)rnd.NextDouble() * h;
+                    float ang = (float)(rnd.NextDouble() * Math.PI * 2);
+                    float len = (0.10f + (float)rnd.NextDouble() * 0.35f) * Math.Max(w, h);
+                    float curl = ((float)rnd.NextDouble() - 0.5f) * 0.012f;
+                    float hw = Math.Max(0.55f, 0.75f * sc);
+                    float amp = -0.5f * (0.5f + (float)rnd.NextDouble() * 0.7f) * scratch;
+                    int sd = seed * 613 + i * 29;
+                    float step = 0.5f * sc;
+                    for (float d = 0; d < len; d += step)
+                    {
+                        float t = d / len;
+                        // it bends as it lies, it does not corkscrew: a slow turn, not a turn at every step
+                        ang += curl * step / sc + (Ops.VNoise(d / (70f * sc), i * 1.7f, sd) - 0.5f) * 0.018f;
+                        hx += (float)Math.Cos(ang) * step; hy += (float)Math.Sin(ang) * step;
+                        if (hx < -4 || hy < -4 || hx > w + 4 || hy > h + 4) break;
+                        // thinner and fainter towards both ends, as a hair lies
+                        float e = Ops.SmoothStep(0f, 0.12f, t) * Ops.SmoothStep(0f, 0.18f, 1 - t);
+                        float a0 = amp * e;
+                        int xa = (int)(hx - hw - 1), xb = (int)(hx + hw + 1);
+                        int ya = (int)(hy - hw - 1), yb = (int)(hy + hw + 1);
+                        for (int y = ya; y <= yb; y++)
+                        {
+                            if (y < 0 || y >= h) continue;
+                            for (int x = xa; x <= xb; x++)
+                            {
+                                if (x < 0 || x >= w) continue;
+                                float dd = (float)Math.Sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy));
+                                float a = (1 - Ops.SmoothStep(hw * 0.3f, hw + 0.5f, dd)) * a0 * 0.5f;
+                                if (a == 0) continue;
+                                int j = (y * w + x) * 3;
+                                for (int c = 0; c < 3; c++) D[j + c] += a;
+                            }
+                        }
+                    }
+                }
+                // dust: dirt on the print prints dark, dust on the negative prints white, and neither is a disc
+                int nd = (int)(scratch * 230);
                 for (int i = 0; i < nd; i++)
                 {
                     float px = (float)rnd.NextDouble() * w, py = (float)rnd.NextDouble() * h;
-                    float rr = (0.6f + (float)rnd.NextDouble() * 2.2f) * sc;
-                    float bright = rnd.Next(2) == 0 ? 0.5f : -0.5f;
-                    for (int y = (int)(py - rr - 1); y <= (int)(py + rr + 1); y++)
-                        for (int x = (int)(px - rr - 1); x <= (int)(px + rr + 1); x++)
+                    float rr = (0.45f + (float)rnd.NextDouble() * 1.5f) * sc;
+                    if (rnd.Next(12) == 0) rr *= 2.8f;                 // the odd bigger clump
+                    bool dark = rnd.Next(3) > 0;
+                    float amp = (dark ? -0.5f : 0.55f) * (0.45f + (float)rnd.NextDouble() * 0.8f) * scratch * 0.75f;
+                    int sd = seed * 977 + i * 13;
+                    float inv = 1.7f / Math.Max(0.5f, rr);
+                    int xa = (int)(px - rr * 1.6f - 1), xb = (int)(px + rr * 1.6f + 1);
+                    int ya = (int)(py - rr * 1.6f - 1), yb = (int)(py + rr * 1.6f + 1);
+                    for (int y = ya; y <= yb; y++)
+                    {
+                        if (y < 0 || y >= h) continue;
+                        for (int x = xa; x <= xb; x++)
                         {
-                            if (x < 0 || y < 0 || x >= w || y >= h) continue;
-                            float d = (float)Math.Sqrt((x - px) * (x - px) + (y - py) * (y - py));
-                            float a = (1 - Ops.SmoothStep(rr * 0.5f, rr, d)) * scratch * 0.7f;
+                            if (x < 0 || x >= w) continue;
+                            float dx = x - px, dy = y - py;
+                            float dd = (float)Math.Sqrt(dx * dx + dy * dy);
+                            // the edge wobbles: a speck of dirt has no radius
+                            float rad = rr * (0.55f + 0.9f * Ops.VNoise(dx * inv + 8f, dy * inv + 8f, sd));
+                            float a = (1 - Ops.SmoothStep(rad * 0.35f, rad, dd)) * amp;
+                            if (a == 0) continue;
                             int j = (y * w + x) * 3;
-                            for (int c = 0; c < 3; c++) D[j + c] += bright * a;
+                            for (int c = 0; c < 3; c++) D[j + c] += a;
                         }
+                    }
                 }
             }
             AddGrain(o, 0.35f * k, 1.8f, seed + 99, false);
