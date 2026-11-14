@@ -787,6 +787,10 @@ namespace PixTune
             });
         }
 
+        // The new copy is told which process this is and waits for it to be gone before it loads anything, so
+        // the updated PixTune replaces this one instead of standing beside it. Starting it first and closing
+        // afterwards is the only order available - a closed program cannot start anything - so the waiting is
+        // done at the other end.
         void Restart()
         {
             try
@@ -794,6 +798,7 @@ namespace PixTune
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = Path.Combine(App.Root, "PixTune.bat"),
+                    Arguments = "-AfterPid " + System.Diagnostics.Process.GetCurrentProcess().Id,
                     WorkingDirectory = App.Root,
                     UseShellExecute = true
                 });

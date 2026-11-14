@@ -237,6 +237,12 @@ that is already the same byte for byte is left alone; one that really has change
 does allow while it is open, and what is left behind is swept up at the next start. A file held so tightly that
 it cannot even be renamed stops the update, which then says which file it was.
 
+Once the new version is in place PixTune starts it and closes itself. A program that has closed cannot start
+anything, so that is the only order available, and the waiting is done at the other end: the copy being started
+is told which process asked for it and loads nothing until that process is gone. So the updated PixTune replaces
+the one on screen instead of standing beside it, and the old one cannot write its settings over the new one's.
+If the old one will not close, the new one starts anyway after a minute rather than leaving you with nothing.
+
 ## Saturation and vibrance
 
 Tune Image has both, vibrance under saturation. Saturation moves every colour by as much, so the colours that

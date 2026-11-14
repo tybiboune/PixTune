@@ -11,7 +11,9 @@
 param(
     [Parameter(Position = 0)][string]$Path,
     [string]$SelfTest,
-    [string]$TestScript = 'SelfTest.ps1'
+    [string]$TestScript = 'SelfTest.ps1',
+    # the copy that asked for this one to start, after an update: it is left to close first
+    [int]$AfterPid = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,8 +22,21 @@ $Root = $PSScriptRoot
 if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', "`"$PSCommandPath`"")
     if ($Path) { $a += "`"$Path`"" }
+    if ($AfterPid -gt 0) { $a += @('-AfterPid', $AfterPid) }
     Start-Process powershell.exe -ArgumentList $a
     return
+}
+
+# An update starts this copy and then closes the one that asked for it. Nothing of the new version is loaded
+# until that one is gone, so there are never two PixTunes on screen and the old one cannot write its settings
+# over what this one does. If it will not close, this one starts anyway rather than leaving the owner with
+# nothing: a minute is far longer than closing takes.
+if ($AfterPid -gt 0) {
+    try {
+        $old = Get-Process -Id $AfterPid -ErrorAction SilentlyContinue
+        # Windows gives the number of a closed program to another one soon enough: only a PowerShell is waited for
+        if ($old -and $old.ProcessName -like 'powershell*') { $null = $old.WaitForExit(60000) }
+    } catch { }
 }
 
 . (Join-Path $Root 'lib\Engine.ps1')
