@@ -264,10 +264,20 @@ used. The small one is a choice, not a compromise. Depth Anything 3 Small was tr
 photos: on a close portrait it hands back the subject as a near-flat white cut-out against a blotchy
 background, which is a segmentation rather than a depth field, and it turns hair into a hard silhouette -- the
 look of a bad phone portrait mode. V2 keeps the strands, and keeps a real gradient from hand to face to
-shoulder, which is what a lens actually does. It is also half the download and quicker. What mattered more
-than the model's size was the input size: the same model at 1036 pixels across holds hair it loses at 518, and
-1540 holds a little more again, so the longest side is set from what the graphics card can hold rather than
-left at the 518 it was trained at. 2044 ran the card out of memory.
+shoulder, which is what a lens actually does. It is also half the download and quicker.
+
+The two bigger exports of the same V2 were then tried against it, on the same photos and at the same input
+size (`tests\DepthTrial.ps1`, which runs when they are put in `ai\depth	rial`). Base is a 195 MB download
+and Large 668 MB, against 47 MB. Side by side the maps are hard to tell apart, and what can be measured says
+the same: on a close portrait the face is modelled over 21.6 % of the face-to-background gap by Small, 23.8 %
+by Base and 25.1 % by Large, with the structure at the size of a nose and an eye socket worth 2.83, 2.87 and
+2.86 % of that gap. On a second portrait Large comes out slightly behind on both. The one place it was ahead
+twice over is gradation in the far background, 51 % of the gap against 39 %. That is not worth 3.5 times the
+wait -- 17 seconds a photo against 4.5 on an RTX A2000 -- and fourteen times the download, so Small stays.
+
+What mattered more than the model's size was the input size: the same model at 1036 pixels across holds hair
+it loses at 518, and 1540 holds a little more again, so the longest side is set from what the graphics card
+can hold rather than left at the 518 it was trained at. 2044 ran the card out of memory.
 
 The map is worked out once per photo and kept, and so is the blurred copy, which depends on the blur strength
 and the lens shape but not on where the focus is. So the first use costs a few seconds and everything after

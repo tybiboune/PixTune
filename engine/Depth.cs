@@ -13,9 +13,17 @@ namespace PixTune
     // close portrait it returns the subject as a near-flat white cut-out against a blotchy background, which is
     // a segmentation, not a depth field, and it makes hair into a hard silhouette - the look of a bad phone
     // portrait mode. V2 keeps the strands, and keeps a real gradient from hand to face to shoulder, which is
-    // what a lens actually does. V2 is also half the download and quicker. The input size matters more than the
-    // model's size here: the same model at 1036 across holds hair that it loses at 518, so the longest side is
-    // set from what the card can hold rather than left at the trained 518.
+    // what a lens actually does. V2 is also half the download and quicker.
+    //
+    // Nor the bigger exports of V2 itself. Base (195 MB) and Large (668 MB) were run beside Small on the same
+    // photos at the same input size by tests\DepthTrial.ps1: the maps are hard to tell apart, and measured on
+    // the skin alone - found from the photo, so the measure cannot move with the map it is judging - the face
+    // is modelled over 21.6, 23.8 and 25.1 % of the face-to-background gap, with structure at the size of a
+    // nose and an eye socket worth 2.83, 2.87 and 2.86 %. On a second portrait Large is slightly behind on
+    // both. It is ahead on gradation in the far background, and nowhere else, at 3.5 times the wait.
+    //
+    // The input size matters more than the model's size here: the same model at 1036 across holds hair that it
+    // loses at 518, so the longest side is set from what the card can hold rather than left at the trained 518.
     public static class Depther
     {
         public static string Dir = "", RuntimePath = "", Device = "", LastError = "";
@@ -25,7 +33,10 @@ namespace PixTune
         static OrtSession session;
         static int openedAt;                    // the side the open session was fixed at
 
-        public static string ModelPath { get { return Path.Combine(Dir, "depth_anything_v2_small_fp16.onnx"); } }
+        // which file in that folder, so a trial can put another export of the model beside it and compare
+        public static string ModelFile = "depth_anything_v2_small_fp16.onnx";
+        public static string ModelPath { get { return Path.Combine(Dir, ModelFile); } }
+        public static void Reopen() { lock (loadLk) { if (session != null) { session.Dispose(); session = null; } openedAt = 0; tried = false; } Forget(); }
         public static bool Installed { get { return Dir.Length > 0 && File.Exists(RuntimePath) && File.Exists(ModelPath); } }
         public static bool Available { get { EnsureLoaded(); return ok; } }
         public static void Reset() { lock (loadLk) { if (!ok) tried = false; } }
