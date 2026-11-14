@@ -75,7 +75,14 @@ St 'report' {
     $script:Trace.Add(("a repaint with nothing to do, over {0} of them: {1:N1} ms in all - clearing {2:N1}, shadow {3:N1}, shrinking {4:N1}, the photo {5:N1}, what is over it {6:N1}" -f `
         $n, ([PixTune.ImageCanvas]::PTotal / $n), ([PixTune.ImageCanvas]::PClear / $n), ([PixTune.ImageCanvas]::PShadow / $n),
         ([PixTune.ImageCanvas]::PScale / $n), ([PixTune.ImageCanvas]::PPhoto / $n), ([PixTune.ImageCanvas]::POverlay / $n)))
-    # anything a person would notice as a stall is well over 100 ms; a drawn frame should be a few milliseconds
-    Expect ($worst -lt 100) ("every zoom and pan was drawn at once while the photo was being worked on (slowest {0:N0} ms, middling {1:N0} ms, {2} gestures)" -f $worst, $mid, $script:Feel.Count)
+    # What this is about is that a render under way does not hold the window up, so it is measured against the
+    # same gestures with nothing to do rather than against a fixed number of milliseconds. A fixed number says as
+    # much about how busy the computer is as about the window: run on its own these gestures take 24 ms, run at
+    # the end of the whole suite on the same code 105 ms, and the fixed bar then failed for the machine's state,
+    # not for the window's. The stall this guards against was the window waiting on the render, which is several
+    # times idle, not a fraction more. The ceiling catches a machine so slow the comparison stops meaning much.
+    $idleMid = $it[[int]($it.Count / 2)]; $idleWorst = $it[-1]
+    Expect (($worst -lt $idleWorst * 2.5 + 25) -and ($mid -lt $idleMid * 2 + 20) -and ($worst -lt 400)) `
+        ("a render under way does not hold up a zoom or a pan (slowest {0:N0} ms against {1:N0} idle, middling {2:N0} against {3:N0}, {4} gestures)" -f $worst, $idleWorst, $mid, $idleMid, $script:Feel.Count)
 }
 Start-StRun -Log 'feel.log'
